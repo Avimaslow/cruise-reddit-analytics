@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+.venv/
+.env
+
+# SQLite
+*.db
+
+# Exports / large data
+exports/
+*.csv
+
+# OS junk
+.DS_Store
