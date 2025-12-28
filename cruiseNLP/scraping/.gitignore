@@ -1,18 +1,17 @@
-# secrets
-.env
-
-# python
+# Python
 __pycache__/
 *.pyc
 .venv/
+.env
 
-# sqlite + outputs
+# Databases
 *.db
 *.db-wal
 *.db-shm
+
+# Exports / large files
 exports/
 *.csv
 
-# mac + ide
+# OS
 .DS_Store
-.idea/

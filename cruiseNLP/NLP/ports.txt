@@ -1,0 +1,38 @@
+# Canonical|aliases (comma-separated)
+Cozumel|cozumel, czm
+Nassau|nassau
+Costa Maya|costa maya, mahahual, maha hual
+Roatan|roatan, roatán
+Belize City|belize city, belize
+Labadee|labadee, labadée
+San Juan|san juan
+St Thomas|st thomas, st. thomas, saint thomas
+St Maarten|st maarten, st. maarten, sint maarten
+Grand Cayman|grand cayman, george town, georgetown cayman
+Ocho Rios|ocho rios, ocho ríos
+Montego Bay|montego bay, mobay, mo bay
+Amber Cove|amber cove
+Puerto Plata|puerto plata
+Cabo San Lucas|cabo san lucas, cabo
+Aruba|aruba, oranjestad
+Curacao|curacao, curaçao, willemstad
+Barbados|barbados, bridgetown
+Antigua|antigua, st john's, st. john's, saint john's
+St Kitts|st kitts, st. kitts, saint kitts, basseterre
+St Lucia|st lucia, st. lucia, saint lucia, castries
+Dominica|dominica, roseau
+Grenada|grenada, st george's, st. george's
+Tortola|tortola, road town, bvi
+Key West|key west
+Miami|miami
+Port Canaveral|port canaveral, canaveral
+Fort Lauderdale|fort lauderdale, port everglades, everglades
+Galveston|galveston
+Seattle|seattle
+Vancouver|vancouver
+Juneau|juneau
+Ketchikan|ketchikan
+Skagway|skagway
+Victoria|victoria, victoria bc
+Sitka|sitka
+Icy Strait Point|icy strait point
