@@ -1,0 +1,45 @@
+{
+  "miami": { "name": "Miami", "lat": 25.7781, "lon": -80.1794 },
+  "port-canaveral": { "name": "Port Canaveral", "lat": 28.4100, "lon": -80.6189 },
+  "fort-lauderdale": { "name": "Fort Lauderdale", "lat": 26.0900, "lon": -80.1170 },
+  "galveston": { "name": "Galveston", "lat": 29.3100, "lon": -94.7930 },
+  "new-orleans": { "name": "New Orleans", "lat": 29.9440, "lon": -90.0640 },
+
+  "cozumel": { "name": "Cozumel", "lat": 20.5090, "lon": -86.9450 },
+  "costa-maya": { "name": "Costa Maya", "lat": 18.7310, "lon": -87.7100 },
+  "belize-city": { "name": "Belize City", "lat": 17.5046, "lon": -88.1962 },
+  "roatan": { "name": "Roatán", "lat": 16.3240, "lon": -86.5370 },
+  "nassau": { "name": "Nassau", "lat": 25.0781, "lon": -77.3380 },
+  "labadee": { "name": "Labadee", "lat": 19.7760, "lon": -72.2400 },
+
+  "san-juan": { "name": "San Juan", "lat": 18.4655, "lon": -66.1057 },
+  "st-thomas": { "name": "St. Thomas", "lat": 18.3360, "lon": -64.9210 },
+  "st-maarten": { "name": "St. Maarten", "lat": 18.0425, "lon": -63.0548 },
+
+  "vancouver": { "name": "Vancouver", "lat": 49.2895, "lon": -123.1160 },
+  "seattle": { "name": "Seattle", "lat": 47.6062, "lon": -122.3321 },
+  "juneau": { "name": "Juneau", "lat": 58.3019, "lon": -134.4197 },
+  "ketchikan": { "name": "Ketchikan", "lat": 55.3422, "lon": -131.6461 },
+  "skagway": { "name": "Skagway", "lat": 59.4583, "lon": -135.3139 },
+
+  "cabo-san-lucas": { "name": "Cabo San Lucas", "lat": 22.8905, "lon": -109.9167 },
+
+   "amber-cove": { "name": "Amber Cove", "lat": 19.7575, "lon": -70.0278 },
+  "antigua": { "name": "Antigua", "lat": 17.1274, "lon": -61.8468 },
+  "aruba": { "name": "Aruba", "lat": 12.5092, "lon": -70.0086 },
+  "barbados": { "name": "Barbados", "lat": 13.1060, "lon": -59.6132 },
+  "curacao": { "name": "Curaçao", "lat": 12.1696, "lon": -68.9900 },
+  "dominica": { "name": "Dominica", "lat": 15.3092, "lon": -61.3794 },
+  "grand-cayman": { "name": "Grand Cayman", "lat": 19.3133, "lon": -81.2546 },
+  "icy-strait-point": { "name": "Icy Strait Point", "lat": 58.1286, "lon": -135.4446 },
+  "key-west": { "name": "Key West", "lat": 24.5551, "lon": -81.7800 },
+  "montego-bay": { "name": "Montego Bay", "lat": 18.4712, "lon": -77.9188 },
+  "ocho-rios": { "name": "Ocho Rios", "lat": 18.4075, "lon": -77.1031 },
+  "puerto-plata": { "name": "Puerto Plata", "lat": 19.7808, "lon": -70.6871 },
+  "sitka": { "name": "Sitka", "lat": 57.0531, "lon": -135.3300 },
+  "st-kitts": { "name": "St. Kitts", "lat": 17.3578, "lon": -62.7830 },
+  "tortola": { "name": "Tortola", "lat": 18.4314, "lon": -64.6231 },
+  "victoria": { "name": "Victoria (BC)", "lat": 48.4284, "lon": -123.3656 }
+
+
+}

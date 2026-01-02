@@ -1,0 +1,5 @@
+[
+  { "port_id": "cozumel", "name": "Cozumel", "lat": 20.51, "lon": -86.95 },
+  { "port_id": "nassau", "name": "Nassau", "lat": 25.06, "lon": -77.34 },
+  { "port_id": "roatan", "name": "Roatán", "lat": 16.33, "lon": -86.52 }
+]
