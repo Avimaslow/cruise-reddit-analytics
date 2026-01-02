@@ -1,168 +1,278 @@
 
-# Cruise Reddit Analytics
+#  Cruise Reddit Analytics
 
-A scalable data ingestion and analysis pipeline that collects, deduplicates, and continuously backfills Reddit discussions about cruise lines, ships, and passenger experiences for downstream analytics and NLP.
+**AI-Powered Cruise Sentiment, Port, Line & Ship Intelligence**
 
----
+Cruise Reddit Analytics is a full-stack data analytics platform that ingests large-scale Reddit discussion data about cruises and transforms it into **actionable insights about ports, cruise lines, and individual ships**.
 
-## Overview
+The project combines **data scraping, NLP, sentiment & severity modeling, SQL analytics, and a modern interactive dashboard** to answer questions like:
 
-Cruise Reddit Analytics is a data engineering and analytics project focused on understanding passenger sentiment and recurring themes across major cruise lines using Reddit data.
+* Which ports generate the most complaints?
+* How does sentiment differ by cruise line?
+* Which ships have the worst passenger experiences — and why?
+* What themes dominate negative vs positive discussions?
+* How do experiences change over time?
 
-The project ingests posts and comments from multiple cruise-related subreddits, stores them in a structured database, and prepares the data for sentiment analysis, topic modeling, and comparative analytics across cruise lines.
-
-Rather than attempting to “scrape all of Reddit,” the system is designed around Reddit’s API constraints and implements a repeatable ingestion strategy that maximizes accessible data and grows incrementally over time.
-
----
-
-## Key Features
-
-- **Maximum-coverage Reddit ingestion**
-  - Collects posts using multiple listing strategies:
-    - `new`, `hot`, `rising`
-    - `top` (day / week / month / year / all-time)
-  - Ensures high historical coverage within API limits
-
-- **Scalable comment ingestion**
-  - Expands comment trees safely using `replace_more`
-  - Caps comment ingestion per post to prevent runaway threads
-  - Re-ingests comments only when posts are new or actively changing
-
-- **Deduplication & upserts**
-  - Primary-key–based upserts prevent duplicate posts or comments
-  - Pipeline is fully re-runnable without data corruption
-
-- **Structured storage**
-  - SQLite database with indexed tables for:
-    - posts
-    - comments
-  - Optimized for downstream SQL analytics and NLP workflows
-
-- **Reproducible data generation**
-  - Large datasets (CSV exports, databases) are generated locally
-  - No large files or secrets committed to GitHub
+This project is designed to feel like a **real analytics product**, not a toy demo.
 
 ---
 
-## Data Sources
+##   Key Features
 
-The pipeline ingests data from publicly available Reddit subreddits, including:
+###  Port Analytics
 
-- `r/Cruise`, `r/Cruises` (mixed cruise discussions)
-- `r/royalcaribbean`
-- `r/CarnivalCruiseFans`
-- `r/NCL`
-- `r/MSCCruises`
-- `r/CelebrityCruises`
-- `r/dcl` (Disney Cruise Line)
-- `r/PrincessCruises`
-- `r/VirginVoyages`
+* Mentions per port
+* Average sentiment & severity
+* Theme composition
+* Worst passenger experiences (high-severity comments)
+* Monthly sentiment & severity trends
+* Interactive world map with port selection
 
-Additional subreddits can be added easily via configuration.
+###  Cruise Line Analytics
+
+* Line-level sentiment summaries
+* Best and worst ports for each cruise line
+* Dominant complaint & praise themes
+* Most liked vs most severe Reddit comments
+* Time-based trend analysis
+
+###  Ship-Level Intelligence
+
+* Per-ship sentiment & severity
+* Ports most associated with each ship
+* Worst experiences by severity
+* Most upvoted passenger feedback
+* Theme and trend breakdowns
+* Graceful handling of sparse ship data
+
+###  NLP & Scoring
+
+* Sentiment classification (neg / neu / pos)
+* Continuous sentiment scores
+* Severity scoring (impact-weighted complaints)
+* Theme extraction per comment
+* Neutral + high-severity logic for complaint detection
+
+###  Interactive Dashboard
+
+* Built with React + Vite
+* Responsive, multi-panel analytics layout
+* Drill-down navigation:
+
+  * Port → Line → Ship
+* Charts, stacks, trends, and ranked lists
+* Real-time filtering without page reloads
 
 ---
 
-## Project Structure
+##  Architecture Overview
 
 ```
-
-scraping/
-├── run_ingest.py          # Main entry point
-├── settings.py            # Subreddit config and ingestion parameters
-├── reddit_client.py       # Reddit API client (PRAW)
-├── db.py                  # SQLite schema and upsert logic
-├── ingest_posts.py        # Post ingestion logic
-├── ingest_comments.py     # Comment ingestion logic
-├── export_csv.py          # Optional CSV exports
-├── requirements.txt
-└── README.md
-
-````
+┌──────────────┐
+│   Reddit     │
+│  (PRAW API)  │
+└──────┬───────┘
+       │
+       ▼
+┌─────────────────────┐
+│  Data Extraction    │
+│  + Normalization    │
+└──────┬──────────────┘
+       │
+       ▼
+┌─────────────────────┐
+│   NLP Processing    │
+│  - Sentiment        │
+│  - Severity         │
+│  - Themes           │
+└──────┬──────────────┘
+       │
+       ▼
+┌─────────────────────┐
+│   SQLite Database   │
+│  (JSON arrays, SQL) │
+└──────┬──────────────┘
+       │
+       ▼
+┌─────────────────────┐
+│   FastAPI Backend   │
+│   REST Endpoints    │
+└──────┬──────────────┘
+       │
+       ▼
+┌─────────────────────┐
+│ React Dashboard     │
+│ (Vite + Recharts)   │
+└─────────────────────┘
+```
 
 ---
 
-## Setup
+## 🗄 Database Design
 
-### 1. Create a virtual environment
+### Core Tables
+
+* `comments` – raw Reddit comments
+* `extraction` – normalized entities (ports, ships, cruise lines)
+* `nlp_scores` – sentiment, severity, labels
+* `themes` – extracted complaint/praise themes
+
+### Key Techniques
+
+* JSON arrays for multi-entity relationships
+* `json_each()` joins for ports & ships
+* Aggregation by entity + time
+* Severity-weighted analytics
+* Defensive SQL for missing data
+
+---
+
+##  Backend API (FastAPI)
+
+### Example Endpoints
+
+#### Ports
+
+```
+GET /ports
+GET /ports/{port_id}
+GET /ports/{port_id}/themes
+GET /ports/{port_id}/trend
+GET /ports/{port_id}/feed
+```
+
+#### Cruise Lines
+
+```
+GET /lines/{line_id}
+GET /lines/{line_id}/ports
+GET /lines/{line_id}/themes
+GET /lines/{line_id}/trend
+GET /lines/{line_id}/top-comments
+GET /lines/{line_id}/worst-comments
+```
+
+#### Ships
+
+```
+GET /ships/{ship_id}
+GET /ships/{ship_id}/ports
+GET /ships/{ship_id}/themes
+GET /ships/{ship_id}/trend
+GET /ships/{ship_id}/top-comments
+GET /ships/{ship_id}/worst-comments
+```
+
+---
+
+##  Frontend (React Dashboard)
+
+* **React + Vite**
+* TailwindCSS
+* Recharts for visualization
+* Leaflet for interactive maps
+* Client-side routing with React Router
+* Robust error handling (`Promise.allSettled`)
+* Responsive, overflow-safe layouts
+
+---
+
+##  Getting Started
+
+### 1 Clone the repo
+
 ```bash
+git clone https://github.com/Avimaslow/cruise-reddit-analytics.git
+cd cruise-reddit-analytics
+```
+
+---
+
+### 2 Backend setup
+
+```bash
+cd cruiseNLP
 python -m venv .venv
 source .venv/bin/activate
-````
-
-### 2. Install dependencies
-
-```bash
 pip install -r requirements.txt
 ```
 
-### 3. Configure environment variables
-
-Create a `.env` file based on `.env.example`:
+Run API:
 
 ```bash
-REDDIT_CLIENT_ID=your_client_id
-REDDIT_CLIENT_SECRET=your_client_secret
-REDDIT_USER_AGENT=cruise-reddit-analytics:v0.1 (by u/yourusername)
+python -m uvicorn cruiseNLP.api.app:app --reload --port 8000
 ```
 
 ---
 
-## Running the Ingestion Pipeline
+### 3 Frontend setup
 
 ```bash
-python run_ingest.py
+cd cruise-dashboard
+npm install
+npm run dev
 ```
 
-This will:
+Open:
 
-* Ingest posts from configured subreddits
-* Ingest comments for new or recently active posts
-* Store results in `cruise_reddit.db`
-* Optionally export CSVs to `exports/`
-
----
-
-## Data Management
-
-Large generated files are **not committed to GitHub**, including:
-
-* SQLite databases
-* CSV exports
-
-These files are listed in `.gitignore` and can be regenerated locally at any time by running the pipeline.
-
-This follows standard best practices for data engineering projects.
+```
+http://localhost:5173
+```
 
 ---
 
-## Intended Analyses (Next Steps)
+##  Data Sources
 
-Planned downstream analyses include:
+* Reddit cruise-related subreddits
+* Public Reddit metadata (scores, timestamps)
+* Wikipedia thumbnails (client-side, optional)
 
-* Sentiment and severity scoring of posts and comments
-* Ship and port entity extraction
-* Cross–cruise-line comparison dashboards
-* Identification of recurring complaint themes
-* Ranking ships and lines by positive/negative sentiment
+All scraping is done **lightly and responsibly** for analysis purposes only.
 
 ---
 
-## Why This Project Matters
+##  Design Philosophy
 
-This project demonstrates:
+This project intentionally:
 
-* Realistic handling of third-party API constraints
-* Scalable data ingestion design
-* Clean separation between data generation and version control
-* A strong foundation for NLP and analytics work
+* prioritizes **real data messiness**
+* handles **missing or ambiguous entities**
+* avoids fake “perfect” datasets
+* treats neutral-high-severity complaints as meaningful signals
+* balances statistical rigor with visual clarity
 
-It is designed to be extensible into production-style analytics and machine learning workflows.
+It is built to feel like something an **actual cruise analytics or insights team** might use internally.
 
 ---
 
-## License
+##  What Makes This Project Interesting
 
-This project is for educational and research purposes. Reddit data is subject to Reddit’s API Terms of Service.
+* Real-world NLP on noisy social data
+* Complex SQL with JSON joins
+* Severity-aware sentiment analysis
+* Multi-entity drill-down analytics
+* Product-quality dashboard UX
+* Thoughtful handling of partial or sparse data
 
+---
+
+##  Future Enhancements
+
+* Ship → Cruise line cross-analysis
+* Port-level geo heatmaps
+* Theme clustering & similarity
+* User-submitted reviews
+* Model explainability for severity scoring
+* Deployment (Railway / Fly.io / Vercel)
+
+---
+
+## Author
+
+**Avi Maslow**
+Computer Science @ Columbia University
+Data analytics, NLP, and systems engineering
+
+GitHub: [https://github.com/Avimaslow](https://github.com/Avimaslow)
 
 
