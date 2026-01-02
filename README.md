@@ -2,7 +2,6 @@
 #  Cruise Reddit Analytics
 ![Port Dashboard](assets/screenshots/dashboardDemo)
 
-![POV of Site](assets/screenshots/demoMovie.mov)
 
 
 **AI-Powered Cruise Sentiment, Port, Line & Ship Intelligence**
