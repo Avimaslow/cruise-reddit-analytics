@@ -1,6 +1,6 @@
 
 #  Cruise Reddit Analytics
-![Port Dashboard](assets/screenshots/dashboardDemo)
+
 
 
 
@@ -30,6 +30,8 @@ This project is designed to feel like a **real analytics product**, not a toy de
 * Worst passenger experiences (high-severity comments)
 * Monthly sentiment & severity trends
 * Interactive world map with port selection
+![Port Dashboard](assets/screenshots/dashboardDemo)
+![Port Dashboard](assets/screenshots/portsView.png)
 
 ###  Cruise Line Analytics
 
@@ -38,6 +40,8 @@ This project is designed to feel like a **real analytics product**, not a toy de
 * Dominant complaint & praise themes
 * Most liked vs most severe Reddit comments
 * Time-based trend analysis
+![Port Dashboard](assets/screenshots/shipsview.png)
+![Port Dashboard](assets/screenshots/shipsview2.png)
 
 ###  Ship-Level Intelligence
 
