@@ -1,13 +1,8 @@
 
 #  Cruise Reddit Analytics
-##  Dashboard Preview
+![Port Dashboard](assets/screenshots/dashboardDemo)
 
-### Port Analytics
-![Port Dashboard](assets/screenshots/Screenshot 2026-01-02 at 4.43.19 PM.png)
-
-### Playview of Site 
-![Cruise Line Dashboard](assets/screenshots/Screen Recording 2026-01-02 at 4.44.26 PM.mov)
-
+![POV of Site](assets/screenshots/demoMovie.mov)
 
 
 **AI-Powered Cruise Sentiment, Port, Line & Ship Intelligence**
