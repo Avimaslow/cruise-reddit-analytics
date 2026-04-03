@@ -737,14 +737,3 @@ It is meant to look and behave like something a cruise line, travel startup, or 
 - date filtering currently uses preset windows instead of custom start/end selection
 
 ---
-
-## Why This Is A Strong Portfolio Project
-
-It demonstrates:
-
-- spatial/product thinking
-- data engineering
-- interpretable NLP
-- SQL analytics with JSON joins
-- full-stack product design
-- a business-facing use case rather than a toy visualization
