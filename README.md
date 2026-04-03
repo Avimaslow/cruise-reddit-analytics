@@ -109,6 +109,7 @@ These pages show:
 ### Cruise Ship Detail Pages
 
 Clicking a ship card opens a detail page for that ship.
+[![Beyond Port Mapping](screenshots/Screenshot%202026-04-03%20at%202.50.00%E2%80%AFPM.png)](screenshots/Screenshot%202026-04-03%20at%202.50.00%E2%80%AFPM.png)
 
 These pages show:
 
