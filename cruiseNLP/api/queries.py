@@ -38,10 +38,20 @@ WITH comment_stats AS (
   FROM extraction e
   JOIN nlp_scores s
     ON s.object_type = e.object_type AND s.object_id = e.object_id
+  LEFT JOIN comments c
+    ON e.object_type='comment' AND c.comment_id = e.object_id
+  LEFT JOIN posts cp
+    ON c.post_id = cp.post_id
   JOIN json_each(e.port_ids) AS je
   WHERE e.object_type='comment'
     AND e.port_ids IS NOT NULL
     AND e.port_ids != '[]'
+    AND (
+      ? IS NULL OR
+      LOWER(REPLACE(TRIM(COALESCE(e.cruise_line, cp.cruise_line_from_subreddit, '')), ' ', '-')) = ?
+    )
+    AND (? IS NULL OR c.created_utc >= ?)
+    AND (? IS NULL OR c.created_utc < ?)
   GROUP BY je.value
 ),
 post_stats AS (
@@ -60,6 +70,12 @@ post_stats AS (
   WHERE e.object_type='post'
     AND e.port_ids IS NOT NULL
     AND e.port_ids != '[]'
+    AND (
+      ? IS NULL OR
+      LOWER(REPLACE(TRIM(COALESCE(e.cruise_line, p.cruise_line_from_subreddit, '')), ' ', '-')) = ?
+    )
+    AND (? IS NULL OR p.created_utc >= ?)
+    AND (? IS NULL OR p.created_utc < ?)
   GROUP BY je.value
 )
 SELECT
@@ -96,7 +112,10 @@ LEFT JOIN nlp_scores s
 WHERE e.object_type='post'
   AND e.port_ids IS NOT NULL
   AND e.port_ids != '[]'
-  AND je.value = ?;
+  AND je.value = ?
+  AND (? IS NULL OR LOWER(REPLACE(TRIM(COALESCE(e.cruise_line, p.cruise_line_from_subreddit, '')), ' ', '-')) = ?)
+  AND (? IS NULL OR p.created_utc >= ?)
+  AND (? IS NULL OR p.created_utc < ?);
 """
 
 PORT_LINE_SHARES = """
@@ -114,6 +133,9 @@ WITH base AS (
     AND e.port_ids IS NOT NULL
     AND e.port_ids != '[]'
     AND je.value = ?
+    AND (? IS NULL OR LOWER(REPLACE(TRIM(COALESCE(e.cruise_line, p.cruise_line_from_subreddit, '')), ' ', '-')) = ?)
+    AND (? IS NULL OR p.created_utc >= ?)
+    AND (? IS NULL OR p.created_utc < ?)
 ),
 agg AS (
   SELECT
@@ -148,10 +170,15 @@ SELECT
 FROM themes t
 JOIN extraction e
   ON e.object_type = t.object_type AND e.object_id = t.object_id
+JOIN comments c
+  ON c.comment_id = e.object_id
 JOIN json_each(e.port_ids) AS je
 WHERE e.port_ids IS NOT NULL
   AND e.port_ids != '[]'
   AND je.value = ?
+  AND (? IS NULL OR LOWER(REPLACE(TRIM(COALESCE(e.cruise_line, '')), ' ', '-')) = ?)
+  AND (? IS NULL OR c.created_utc >= ?)
+  AND (? IS NULL OR c.created_utc < ?)
 GROUP BY t.theme_label
 ORDER BY n DESC
 LIMIT ?;
@@ -183,6 +210,9 @@ WHERE e.object_type='post'
   AND e.port_ids IS NOT NULL
   AND e.port_ids != '[]'
   AND je.value = ?
+  AND (? IS NULL OR LOWER(REPLACE(TRIM(COALESCE(e.cruise_line, p.cruise_line_from_subreddit, '')), ' ', '-')) = ?)
+  AND (? IS NULL OR p.created_utc >= ?)
+  AND (? IS NULL OR p.created_utc < ?)
 ORDER BY COALESCE(p.score, 0) DESC, COALESCE(p.num_comments, 0) DESC, COALESCE(p.created_utc, 0) DESC
 LIMIT ?;
 """
@@ -213,6 +243,9 @@ WHERE e.object_type='post'
   AND e.port_ids IS NOT NULL
   AND e.port_ids != '[]'
   AND je.value = ?
+  AND (? IS NULL OR LOWER(REPLACE(TRIM(COALESCE(e.cruise_line, p.cruise_line_from_subreddit, '')), ' ', '-')) = ?)
+  AND (? IS NULL OR p.created_utc >= ?)
+  AND (? IS NULL OR p.created_utc < ?)
 ORDER BY COALESCE(p.num_comments, 0) DESC, COALESCE(p.score, 0) DESC, COALESCE(p.created_utc, 0) DESC
 LIMIT ?;
 """
@@ -243,6 +276,9 @@ WHERE e.object_type='post'
   AND e.port_ids IS NOT NULL
   AND e.port_ids != '[]'
   AND je.value = ?
+  AND (? IS NULL OR LOWER(REPLACE(TRIM(COALESCE(e.cruise_line, p.cruise_line_from_subreddit, '')), ' ', '-')) = ?)
+  AND (? IS NULL OR p.created_utc >= ?)
+  AND (? IS NULL OR p.created_utc < ?)
 ORDER BY COALESCE(p.created_utc, 0) DESC, COALESCE(p.score, 0) DESC
 LIMIT ?;
 """
@@ -332,6 +368,19 @@ ORDER BY mentions DESC
 LIMIT ?;
 """
 
+LIST_SHIPS = """
+SELECT
+  se.value AS ship_id,
+  COUNT(*) AS mentions
+FROM extraction e
+JOIN json_each(e.ship_ids) AS se
+WHERE e.ship_ids IS NOT NULL
+  AND e.ship_ids != '[]'
+GROUP BY se.value
+ORDER BY mentions DESC
+LIMIT ?;
+"""
+
 SEARCH_PORTS = """
 SELECT
   je.value AS id,
@@ -372,11 +421,16 @@ SELECT
 FROM extraction e
 JOIN nlp_scores s
   ON s.object_type = e.object_type AND s.object_id = e.object_id
+JOIN comments c
+  ON c.comment_id = e.object_id
 JOIN json_each(e.port_ids) AS je
 WHERE e.object_type='comment'
   AND e.port_ids IS NOT NULL
   AND e.port_ids != '[]'
-  AND je.value = ?;
+  AND je.value = ?
+  AND (? IS NULL OR LOWER(REPLACE(TRIM(COALESCE(e.cruise_line, '')), ' ', '-')) = ?)
+  AND (? IS NULL OR c.created_utc >= ?)
+  AND (? IS NULL OR c.created_utc < ?);
 """
 
 LINE_SENTIMENT_SUMMARY = """
@@ -407,11 +461,16 @@ JOIN nlp_scores s
   ON s.object_type = t.object_type AND s.object_id = t.object_id
 JOIN extraction e
   ON e.object_type = t.object_type AND e.object_id = t.object_id
+JOIN comments c
+  ON c.comment_id = e.object_id
 JOIN json_each(e.port_ids) AS je
 WHERE t.object_type='comment'
   AND e.port_ids IS NOT NULL
   AND e.port_ids != '[]'
   AND je.value = ?
+  AND (? IS NULL OR LOWER(REPLACE(TRIM(COALESCE(e.cruise_line, '')), ' ', '-')) = ?)
+  AND (? IS NULL OR c.created_utc >= ?)
+  AND (? IS NULL OR c.created_utc < ?)
 GROUP BY t.theme_label
 HAVING n >= ?
 ORDER BY avg_sent ASC
@@ -506,6 +565,9 @@ JOIN posts p
 JOIN json_each(e.port_ids) je
 WHERE je.value = ?
   AND e.object_type = 'post'
+  AND (? IS NULL OR LOWER(REPLACE(TRIM(COALESCE(e.cruise_line, p.cruise_line_from_subreddit, '')), ' ', '-')) = ?)
+  AND (? IS NULL OR p.created_utc >= ?)
+  AND (? IS NULL OR p.created_utc < ?)
 GROUP BY month
 ORDER BY month;
 """

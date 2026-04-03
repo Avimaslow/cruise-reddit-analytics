@@ -10,10 +10,24 @@ async function getJson(path) {
 
 export const CruiseAPI = {
   ports: (limit = 200) => getJson(`/ports?limit=${limit}`),
-  portsIntelligence: (limit = 100) => getJson(`/ports/intelligence?limit=${limit}`),
+  lines: (limit = 100) => getJson(`/lines?limit=${limit}`),
+  ships: (limit = 100) => getJson(`/ships?limit=${limit}`),
+  portsIntelligence: (limit = 100, lineId = null, dateRange = "all") => {
+    const params = new URLSearchParams();
+    params.set("limit", String(limit));
+    if (lineId) params.set("line_id", lineId);
+    if (dateRange && dateRange !== "all") params.set("date_range", dateRange);
+    return getJson(`/ports/intelligence?${params.toString()}`);
+  },
 
   portSummary: (portId) => getJson(`/ports/${encodeURIComponent(portId)}`),
-  portOverview: (portId) => getJson(`/ports/${encodeURIComponent(portId)}/overview`),
+  portOverview: (portId, lineId = null, dateRange = "all") => {
+    const params = new URLSearchParams();
+    if (lineId) params.set("line_id", lineId);
+    if (dateRange && dateRange !== "all") params.set("date_range", dateRange);
+    const query = params.toString();
+    return getJson(`/ports/${encodeURIComponent(portId)}/overview${query ? `?${query}` : ""}`);
+  },
   portPulse: (portId) => getJson(`/ports/${encodeURIComponent(portId)}/pulse`),
   portKeywords: (portId, limit = 12) =>
     getJson(`/ports/${encodeURIComponent(portId)}/keywords?limit=${limit}`),

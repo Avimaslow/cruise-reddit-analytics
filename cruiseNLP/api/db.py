@@ -5,7 +5,7 @@ import os
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Tuple
+from typing import Any, Optional, Tuple
 
 
 def _db_score(path: Path) -> int:
@@ -89,7 +89,7 @@ def fetch_all(conn: sqlite3.Connection, sql: str, params: Tuple[Any, ...] = ()) 
     return [dict(r) for r in rows]
 
 
-def fetch_one(conn: sqlite3.Connection, sql: str, params: Tuple[Any, ...] = ()) -> dict | None:
+def fetch_one(conn: sqlite3.Connection, sql: str, params: Tuple[Any, ...] = ()) -> Optional[dict]:
     cur = conn.execute(sql, params)
     row = cur.fetchone()
     return dict(row) if row else None

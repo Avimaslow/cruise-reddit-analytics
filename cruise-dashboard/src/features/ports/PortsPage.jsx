@@ -1,5 +1,6 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   Area,
   AreaChart,
@@ -54,8 +55,14 @@ function sentimentBucket(value) {
   return "mixed";
 }
 
-function topThemeLabel(rows) {
-  return rows?.[0]?.theme_label || "Not enough theme data";
+function concernOrFavoriteLabel(overview, kind) {
+  const rows =
+    kind === "concern" ? overview?.traveler_concerns : overview?.traveler_favorites;
+  if (rows?.[0]?.theme_label) return rows[0].theme_label;
+  if (overview?.keywords?.[0]?.keyword) return overview.keywords[0].keyword;
+  return kind === "concern"
+    ? "No concern signal in current filter"
+    : "No favorite signal in current filter";
 }
 
 function topLineLabel(rows) {
@@ -136,8 +143,56 @@ function CompareMetric({ label, left, right }) {
     <div className="rounded-[1.25rem] border border-white/10 bg-white/5 px-4 py-3">
       <div className="text-xs uppercase tracking-[0.16em] text-slate-400">{label}</div>
       <div className="mt-2 grid grid-cols-2 gap-3 text-sm text-slate-100">
-        <div>{left}</div>
-        <div>{right}</div>
+        <div className="min-w-0 break-words leading-5 text-balance">{left}</div>
+        <div className="min-w-0 break-words leading-5 text-balance">{right}</div>
+      </div>
+    </div>
+  );
+}
+
+function EntitySpotlight({ title, subtitle, rows, hrefPrefix, accent = "cyan" }) {
+  const accents = {
+    cyan: "from-cyan-400/30 to-sky-500/20 border-cyan-300/20",
+    amber: "from-amber-400/30 to-orange-500/20 border-amber-300/20",
+  };
+
+  return (
+    <div className={`rounded-[1.5rem] border bg-gradient-to-br ${accents[accent]} p-5`}>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <div className="text-xs uppercase tracking-[0.18em] text-slate-300">{title}</div>
+          <div className="mt-2 text-sm text-slate-300">{subtitle}</div>
+        </div>
+        <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-200">
+          {rows.length} shown
+        </div>
+      </div>
+
+      <div className="mt-4 space-y-3">
+        {rows.map((row, index) => (
+          <Link
+            key={row.id}
+            to={`${hrefPrefix}/${row.id}`}
+            className="group flex items-center justify-between gap-4 rounded-[1.15rem] border border-white/10 bg-slate-950/50 px-4 py-3 transition hover:border-white/20 hover:bg-white/8"
+          >
+            <div className="min-w-0">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-slate-500">
+                #{String(index + 1).padStart(2, "0")}
+              </div>
+              <div className="mt-1 truncate text-base font-medium text-white">{row.name}</div>
+            </div>
+            <div className="shrink-0 text-right">
+              <div className="text-xs text-slate-500">Mentions</div>
+              <div className="mt-1 text-sm font-semibold text-slate-100">{formatNumber(row.mentions)}</div>
+            </div>
+          </Link>
+        ))}
+
+        {!rows.length ? (
+          <div className="rounded-[1.15rem] border border-white/10 bg-slate-950/50 px-4 py-6 text-sm text-slate-400">
+            No records in this slice.
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -145,12 +200,16 @@ function CompareMetric({ label, left, right }) {
 
 export default function PortsPage() {
   const [ports, setPorts] = useState([]);
+  const [lines, setLines] = useState([]);
+  const [ships, setShips] = useState([]);
   const [loadingPorts, setLoadingPorts] = useState(true);
   const [portsError, setPortsError] = useState("");
   const [selectedPortId, setSelectedPortId] = useState("");
   const [comparePortId, setComparePortId] = useState("");
   const [query, setQuery] = useState("");
   const [region, setRegion] = useState("all");
+  const [lineFilter, setLineFilter] = useState("all");
+  const [dateRange, setDateRange] = useState("all");
   const [sentimentFilter, setSentimentFilter] = useState("all");
   const [sortBy, setSortBy] = useState("mentions");
   const [postTab, setPostTab] = useState("top");
@@ -166,8 +225,12 @@ export default function PortsPage() {
     setLoadingPorts(true);
     setPortsError("");
 
-    CruiseAPI.portsIntelligence(120)
-      .then((rows) => {
+    Promise.all([
+      CruiseAPI.portsIntelligence(120, lineFilter === "all" ? null : lineFilter, dateRange),
+      CruiseAPI.lines(100),
+      CruiseAPI.ships(100),
+    ])
+      .then(([rows, lineRows, shipRows]) => {
         if (!alive) return;
         const merged = (Array.isArray(rows) ? rows : [])
           .map((row) => {
@@ -184,9 +247,18 @@ export default function PortsPage() {
           .filter((row) => row.name);
 
         setPorts(merged);
+        setLines(Array.isArray(lineRows) ? lineRows : []);
+        setShips(Array.isArray(shipRows) ? shipRows : []);
         if (merged.length) {
-          setSelectedPortId((current) => current || merged[0].port_id);
-          setComparePortId((current) => current || merged[1]?.port_id || merged[0].port_id);
+          setSelectedPortId((current) =>
+            current && merged.some((port) => port.port_id === current) ? current : merged[0].port_id
+          );
+          setComparePortId((current) => {
+            if (current && merged.some((port) => port.port_id === current) && current !== merged[0].port_id) {
+              return current;
+            }
+            return merged[1]?.port_id || merged[0].port_id;
+          });
         }
       })
       .catch((error) => {
@@ -200,7 +272,7 @@ export default function PortsPage() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [lineFilter, dateRange]);
 
   useEffect(() => {
     if (!selectedPortId) return;
@@ -209,8 +281,10 @@ export default function PortsPage() {
     setOverviewError("");
 
     Promise.all([
-      CruiseAPI.portOverview(selectedPortId),
-      comparePortId && comparePortId !== selectedPortId ? CruiseAPI.portOverview(comparePortId) : Promise.resolve(null),
+      CruiseAPI.portOverview(selectedPortId, lineFilter === "all" ? null : lineFilter, dateRange),
+      comparePortId && comparePortId !== selectedPortId
+        ? CruiseAPI.portOverview(comparePortId, lineFilter === "all" ? null : lineFilter, dateRange)
+        : Promise.resolve(null),
     ])
       .then(([selected, compare]) => {
         if (!alive) return;
@@ -228,7 +302,7 @@ export default function PortsPage() {
     return () => {
       alive = false;
     };
-  }, [selectedPortId, comparePortId]);
+  }, [selectedPortId, comparePortId, lineFilter, dateRange]);
 
   const filteredPorts = useMemo(() => {
     const q = deferredQuery.trim().toLowerCase();
@@ -289,6 +363,13 @@ export default function PortsPage() {
     { key: "most_commented", label: "Most commented" },
     { key: "recent", label: "Most recent" },
   ];
+  const dateRangeOptions = [
+    { value: "all", label: "All time" },
+    { value: "30d", label: "Last 30 days" },
+    { value: "90d", label: "Last 90 days" },
+    { value: "180d", label: "Last 6 months" },
+    { value: "365d", label: "Last 12 months" },
+  ];
   const postRows = selectedOverview?.posts?.[postTab] || [];
 
   return (
@@ -324,7 +405,7 @@ export default function PortsPage() {
 
         <div className="grid gap-6 xl:grid-cols-[19rem_minmax(0,1fr)_28rem]">
           <div className="space-y-6">
-            <Surface title="Filters" subtitle="Focus the map by region, mood, and port name.">
+            <Surface title="Filters" subtitle="Focus the map by region, line, date window, and mood.">
               <div className="space-y-4">
                 <label className="block">
                   <span className="mb-2 block text-xs uppercase tracking-[0.16em] text-slate-400">Search</span>
@@ -346,6 +427,37 @@ export default function PortsPage() {
                     {regions.map((value) => (
                       <option key={value} value={value}>
                         {value === "all" ? "All regions" : value}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="block">
+                  <span className="mb-2 block text-xs uppercase tracking-[0.16em] text-slate-400">Cruise line</span>
+                  <select
+                    value={lineFilter}
+                    onChange={(event) => setLineFilter(event.target.value)}
+                    className="w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm outline-none focus:border-cyan-300/40"
+                  >
+                    <option value="all">All cruise lines</option>
+                    {lines.map((line) => (
+                      <option key={line.id} value={line.id}>
+                        {line.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="block">
+                  <span className="mb-2 block text-xs uppercase tracking-[0.16em] text-slate-400">Date range</span>
+                  <select
+                    value={dateRange}
+                    onChange={(event) => setDateRange(event.target.value)}
+                    className="w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm outline-none focus:border-cyan-300/40"
+                  >
+                    {dateRangeOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
                       </option>
                     ))}
                   </select>
@@ -462,6 +574,28 @@ export default function PortsPage() {
             </Surface>
 
             <Surface
+              title="Beyond Port Mapping"
+              subtitle="Not every Reddit thread names a port. This section keeps line and ship intelligence visible even when destination extraction is sparse."
+            >
+              <div className="grid gap-4 xl:grid-cols-2">
+                <EntitySpotlight
+                  title="Cruise Line Intelligence"
+                  subtitle="Top cruise lines by Reddit mention volume across the current dataset."
+                  rows={lines.slice(0, 6)}
+                  hrefPrefix="/lines"
+                  accent="cyan"
+                />
+                <EntitySpotlight
+                  title="Ship Intelligence"
+                  subtitle="Top ships by matched Reddit references, useful when discussions mention ships but not ports."
+                  rows={ships.slice(0, 6)}
+                  hrefPrefix="/ships"
+                  accent="amber"
+                />
+              </div>
+            </Surface>
+
+            <Surface
               title="Compare Ports"
               subtitle="Put two destinations side by side to contrast attention, mood, and traveler concerns."
               action={
@@ -498,7 +632,7 @@ export default function PortsPage() {
                 </div>
               </div>
 
-              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 <CompareMetric
                   label="Mentions"
                   left={formatNumber(selectedOverview?.port?.mentions)}
@@ -521,13 +655,13 @@ export default function PortsPage() {
                 />
                 <CompareMetric
                   label="Traveler Concern"
-                  left={topThemeLabel(selectedOverview?.traveler_concerns)}
-                  right={topThemeLabel(compareOverview?.traveler_concerns)}
+                  left={concernOrFavoriteLabel(selectedOverview, "concern")}
+                  right={concernOrFavoriteLabel(compareOverview, "concern")}
                 />
                 <CompareMetric
                   label="Traveler Favorite"
-                  left={topThemeLabel(selectedOverview?.traveler_favorites)}
-                  right={topThemeLabel(compareOverview?.traveler_favorites)}
+                  left={concernOrFavoriteLabel(selectedOverview, "favorite")}
+                  right={concernOrFavoriteLabel(compareOverview, "favorite")}
                 />
               </div>
             </Surface>

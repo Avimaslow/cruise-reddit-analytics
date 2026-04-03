@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Literal
+from datetime import datetime, timedelta, timezone
+from typing import Literal, Optional
 
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -41,7 +42,12 @@ def _slug_to_name(slug: str) -> str:
     return " ".join(w.capitalize() for w in slug.split("-") if w)
 
 
-def _score_pulse(post_mentions: int, avg_post_score: float | None, avg_post_comments: float | None, avg_post_sentiment: float | None) -> float:
+def _score_pulse(
+    post_mentions: int,
+    avg_post_score: Optional[float],
+    avg_post_comments: Optional[float],
+    avg_post_sentiment: Optional[float],
+) -> float:
     mentions_n = min(1.0, (post_mentions or 0) / 250.0)
     score_n = min(1.0, max(0.0, (avg_post_score or 0.0) / 400.0))
     comments_n = min(1.0, max(0.0, (avg_post_comments or 0.0) / 120.0))
@@ -94,6 +100,24 @@ def _compute_spikes(trend_rows: list[dict]) -> list[TrendSpike]:
     return spikes
 
 
+def _range_bounds(date_range: Optional[str]) -> tuple[Optional[int], Optional[int]]:
+    if not date_range or date_range == "all":
+        return None, None
+
+    now = datetime.now(timezone.utc)
+    days = {
+        "30d": 30,
+        "90d": 90,
+        "180d": 180,
+        "365d": 365,
+    }.get(date_range)
+    if not days:
+        return None, None
+
+    start = now - timedelta(days=days)
+    return int(start.timestamp()), int(now.timestamp())
+
+
 @app.get("/health", response_model=Health)
 def health() -> Health:
     with get_conn() as conn:
@@ -119,9 +143,22 @@ def list_ports(limit: int = Query(50, ge=1, le=500)) -> list[EntityRef]:
 
 
 @app.get("/ports/intelligence", response_model=list[PortIntelligenceRow])
-def list_ports_intelligence(limit: int = Query(100, ge=1, le=500)) -> list[PortIntelligenceRow]:
+def list_ports_intelligence(
+    limit: int = Query(100, ge=1, le=500),
+    line_id: Optional[str] = Query(None),
+    date_range: Optional[str] = Query("all"),
+) -> list[PortIntelligenceRow]:
+    start_ts, end_ts = _range_bounds(date_range)
     with get_conn() as conn:
-        rows = fetch_all(conn, Q.PORT_INTELLIGENCE, (limit,))
+        rows = fetch_all(
+            conn,
+            Q.PORT_INTELLIGENCE,
+            (
+                line_id, line_id, start_ts, start_ts, end_ts, end_ts,
+                line_id, line_id, start_ts, start_ts, end_ts, end_ts,
+                limit,
+            ),
+        )
     return [_port_row_to_intelligence(r) for r in rows]
 
 
@@ -131,6 +168,16 @@ def list_lines(limit: int = Query(50, ge=1, le=200)) -> list[EntityRef]:
         rows = fetch_all(conn, Q.LIST_LINES, (limit,))
     return [
         EntityRef(entity_type="line", id=r["line_id"], name=r["line_name"], mentions=r["mentions"])
+        for r in rows
+    ]
+
+
+@app.get("/ships", response_model=list[EntityRef])
+def list_ships(limit: int = Query(50, ge=1, le=200)) -> list[EntityRef]:
+    with get_conn() as conn:
+        rows = fetch_all(conn, Q.LIST_SHIPS, (limit,))
+    return [
+        EntityRef(entity_type="ship", id=r["ship_id"], name=_slug_to_name(r["ship_id"]), mentions=r["mentions"])
         for r in rows
     ]
 
@@ -154,7 +201,7 @@ def search(q: str = Query(..., min_length=1), limit: int = Query(20, ge=1, le=10
 @app.get("/ports/{port_id}", response_model=PortSummary)
 def port_summary(port_id: str) -> PortSummary:
     with get_conn() as conn:
-        row = fetch_one(conn, Q.PORT_SENTIMENT_SUMMARY, (port_id,))
+        row = fetch_one(conn, Q.PORT_SENTIMENT_SUMMARY, (port_id, None, None, None, None, None, None))
 
     if not row:
         return PortSummary(port_id=port_id, sentiment=SentimentSummary(mentions=0))
@@ -164,7 +211,7 @@ def port_summary(port_id: str) -> PortSummary:
 @app.get("/ports/{port_id}/pulse", response_model=PortPulse)
 def port_pulse(port_id: str) -> PortPulse:
     with get_conn() as conn:
-        row = fetch_one(conn, Q.PORT_POSTS_STATS, (port_id,)) or {}
+        row = fetch_one(conn, Q.PORT_POSTS_STATS, (port_id, None, None, None, None, None, None)) or {}
 
     post_mentions = int(row.get("post_mentions") or 0)
     avg_post_score = row.get("avg_post_score")
@@ -183,9 +230,18 @@ def port_pulse(port_id: str) -> PortPulse:
 
 
 @app.get("/ports/{port_id}/overview", response_model=PortOverview)
-def port_overview(port_id: str) -> PortOverview:
+def port_overview(
+    port_id: str,
+    line_id: Optional[str] = Query(None),
+    date_range: Optional[str] = Query("all"),
+) -> PortOverview:
+    start_ts, end_ts = _range_bounds(date_range)
     with get_conn() as conn:
-        summary_row = fetch_one(conn, Q.PORT_SENTIMENT_SUMMARY, (port_id,)) or {
+        summary_row = fetch_one(
+            conn,
+            Q.PORT_SENTIMENT_SUMMARY,
+            (port_id, line_id, line_id, start_ts, start_ts, end_ts, end_ts),
+        ) or {
             "mentions": 0,
             "avg_sentiment": None,
             "avg_severity": None,
@@ -193,14 +249,46 @@ def port_overview(port_id: str) -> PortOverview:
             "pos_count": 0,
             "neu_count": 0,
         }
-        post_stats_row = fetch_one(conn, Q.PORT_POSTS_STATS, (port_id,)) or {}
-        themes_rows = fetch_all(conn, Q.PORT_THEMES, (port_id, 3, 24))
-        keyword_rows = fetch_all(conn, Q.PORT_KEYWORDS, (port_id, 12))
-        trend_rows = fetch_all(conn, Q.PORT_TREND, (port_id,))
-        line_rows = fetch_all(conn, Q.PORT_LINE_SHARES, (port_id, 8))
-        top_posts = fetch_all(conn, Q.PORT_TOP_POSTS, (port_id, 12))
-        commented_posts = fetch_all(conn, Q.PORT_MOST_COMMENTED_POSTS, (port_id, 12))
-        recent_posts = fetch_all(conn, Q.PORT_RECENT_POSTS, (port_id, 12))
+        post_stats_row = fetch_one(
+            conn,
+            Q.PORT_POSTS_STATS,
+            (port_id, line_id, line_id, start_ts, start_ts, end_ts, end_ts),
+        ) or {}
+        themes_rows = fetch_all(
+            conn,
+            Q.PORT_THEMES,
+            (port_id, line_id, line_id, start_ts, start_ts, end_ts, end_ts, 3, 24),
+        )
+        keyword_rows = fetch_all(
+            conn,
+            Q.PORT_KEYWORDS,
+            (port_id, line_id, line_id, start_ts, start_ts, end_ts, end_ts, 12),
+        )
+        trend_rows = fetch_all(
+            conn,
+            Q.PORT_TREND,
+            (port_id, line_id, line_id, start_ts, start_ts, end_ts, end_ts),
+        )
+        line_rows = fetch_all(
+            conn,
+            Q.PORT_LINE_SHARES,
+            (port_id, line_id, line_id, start_ts, start_ts, end_ts, end_ts, 8),
+        )
+        top_posts = fetch_all(
+            conn,
+            Q.PORT_TOP_POSTS,
+            (port_id, line_id, line_id, start_ts, start_ts, end_ts, end_ts, 12),
+        )
+        commented_posts = fetch_all(
+            conn,
+            Q.PORT_MOST_COMMENTED_POSTS,
+            (port_id, line_id, line_id, start_ts, start_ts, end_ts, end_ts, 12),
+        )
+        recent_posts = fetch_all(
+            conn,
+            Q.PORT_RECENT_POSTS,
+            (port_id, line_id, line_id, start_ts, start_ts, end_ts, end_ts, 12),
+        )
 
     intelligence = _port_row_to_intelligence({**summary_row, **post_stats_row, "port_id": port_id})
     themes = [ThemeRow(**r) for r in themes_rows]
@@ -259,14 +347,14 @@ def port_themes(
     min_n: int = Query(5, ge=1, le=5000),
 ) -> list[ThemeRow]:
     with get_conn() as conn:
-        rows = fetch_all(conn, Q.PORT_THEMES, (port_id, min_n, limit))
+        rows = fetch_all(conn, Q.PORT_THEMES, (port_id, None, None, None, None, None, None, min_n, limit))
     return [ThemeRow(**r) for r in rows]
 
 
 @app.get("/ports/{port_id}/keywords", response_model=list[KeywordRow])
 def port_keywords(port_id: str, limit: int = Query(12, ge=1, le=100)) -> list[KeywordRow]:
     with get_conn() as conn:
-        rows = fetch_all(conn, Q.PORT_KEYWORDS, (port_id, limit))
+        rows = fetch_all(conn, Q.PORT_KEYWORDS, (port_id, None, None, None, None, None, None, limit))
     return [KeywordRow(**r) for r in rows]
 
 
@@ -275,7 +363,7 @@ def port_feed(
     port_id: str,
     limit: int = Query(25, ge=1, le=200),
     preview_chars: int = Query(240, ge=50, le=2000),
-    theme: str | None = Query(None),
+    theme: Optional[str] = Query(None),
 ) -> list[FeedItem]:
     with get_conn() as conn:
         if theme:
@@ -299,7 +387,7 @@ def port_posts(
     }
     query = qmap[sort]
     with get_conn() as conn:
-        rows = fetch_all(conn, query, (port_id, limit))
+        rows = fetch_all(conn, query, (port_id, None, None, None, None, None, None, limit))
 
     out: list[PortPostItem] = []
     for r in rows:
@@ -329,7 +417,7 @@ def port_posts(
 @app.get("/ports/{port_id}/trend")
 def port_trend(port_id: str) -> list[dict]:
     with get_conn() as conn:
-        return fetch_all(conn, Q.PORT_TREND, (port_id,))
+        return fetch_all(conn, Q.PORT_TREND, (port_id, None, None, None, None, None, None))
 
 
 @app.get("/ports/{port_id}/lines")
@@ -344,7 +432,7 @@ def port_lines(port_id: str, limit: int = Query(30, ge=1, le=200)) -> list[dict]
 @app.get("/ports/{port_id}/line-shares", response_model=list[LineShareRow])
 def port_line_shares(port_id: str, limit: int = Query(10, ge=1, le=200)) -> list[LineShareRow]:
     with get_conn() as conn:
-        rows = fetch_all(conn, Q.PORT_LINE_SHARES, (port_id, limit))
+        rows = fetch_all(conn, Q.PORT_LINE_SHARES, (port_id, None, None, None, None, None, None, limit))
     return [LineShareRow(**r) for r in rows]
 
 
