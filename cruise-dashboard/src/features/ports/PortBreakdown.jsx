@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 import { useEffect, useMemo, useState } from "react";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 import { CruiseAPI } from "../../api/cruiseApi";
@@ -98,20 +99,6 @@ function StackCard({ title, rows, labelKey, valueKey, colors, onRowClick }) {
       </div>
     </div>
   );
-}
-
-// Simple slug->title guesses for Wikipedia lookup
-function titleizeLine(lineName) {
-  // keep it simple; you can customize later for edge cases
-  return lineName;
-}
-
-function titleizeShip(shipId) {
-  // ship ids are like "wonder-of-the-seas" -> "Wonder of the Seas"
-  return shipId
-    .split("-")
-    .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w))
-    .join(" ");
 }
 
 // Wikipedia REST summary gives a thumbnail if available

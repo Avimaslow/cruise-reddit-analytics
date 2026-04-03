@@ -2,7 +2,7 @@ import "./index.css";
 import { Routes, Route } from "react-router-dom";
 
 import PortsPage from "./features/ports/PortsPage";
-import LinePage from "./pages/Lines/LinePage";
+import LinePage from "./pages/lines/LinePage";
 import ShipPage from "./pages/Ships/ShipPage";
 
 export default function App() {

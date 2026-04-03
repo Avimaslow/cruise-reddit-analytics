@@ -1,521 +1,704 @@
-/* =========================
-   1) PortsPage.jsx (FULL FIX)
-   - prevents chart overflow (overflow-hidden + min-w-0)
-   - gives every chart a fixed height container
-   - keeps FULL summary object for “all the data”
-   - theme click filters feed
-   ========================= */
-
-import { useEffect, useMemo, useState } from "react";
+/* eslint-disable react-hooks/set-state-in-effect */
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import PortsMap from "./PortsMap";
+import portsGeo from "./ports_geo.json";
 import { CruiseAPI } from "../../api/cruiseApi";
-import SentimentDonut from "../../components/charts/SentimentDonut";
-import ThemeDonut from "../../components/charts/ThemeDonut";
-import TrendLine from "../../components/charts/TrendLine";
-import PortBreakdown from "./PortBreakdown";
-function StatPill({ label, value }) {
-  return (
-    <div className="px-3 py-2 rounded-lg border border-zinc-800 bg-zinc-950/60 min-w-0">
-      <div className="text-[11px] text-zinc-400">{label}</div>
-      <div className="text-sm font-semibold truncate">{value ?? "—"}</div>
-    </div>
-  );
+
+function formatNumber(value) {
+  return new Intl.NumberFormat("en-US").format(Number(value || 0));
 }
-function ComplaintsPraiseBar({ sentiment, feed, highSevThreshold = 0.66 }) {
-  const neg = sentiment?.neg_count ?? 0;
-  const pos = sentiment?.pos_count ?? 0;
 
-  const highSevNeutral = (Array.isArray(feed) ? feed : []).reduce((acc, item) => {
-    const sev = Number(item?.severity_score ?? 0);
-    const lab = String(item?.sentiment_label ?? "").toLowerCase(); // "neg" | "neu" | "pos" (or words)
+function formatSigned(value, digits = 2) {
+  if (typeof value !== "number") return "n/a";
+  return `${value > 0 ? "+" : ""}${value.toFixed(digits)}`;
+}
 
-    const isNeutral = lab === "neu" || lab === "neutral";
-    const isHighSev = sev >= highSevThreshold;
+function formatPercent(part, total) {
+  if (!total) return "0%";
+  return `${Math.round((part / total) * 100)}%`;
+}
 
-    return acc + (isNeutral && isHighSev ? 1 : 0);
-  }, 0);
+function formatMonth(month) {
+  if (!month) return "";
+  const [year, mon] = month.split("-");
+  return new Date(Number(year), Number(mon) - 1, 1).toLocaleDateString("en-US", {
+    month: "short",
+    year: "2-digit",
+  });
+}
 
-  const complaints = neg + highSevNeutral;
-  const praise = pos;
+function formatDate(utc) {
+  if (!utc) return "n/a";
+  return new Date(Number(utc) * 1000).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
 
-  const total = complaints + praise || 1;
-  const complaintsPct = (complaints / total) * 100;
-  const praisePct = (praise / total) * 100;
+function sentimentBucket(value) {
+  if (typeof value !== "number") return "mixed";
+  if (value >= 0.15) return "positive";
+  if (value <= -0.1) return "negative";
+  return "mixed";
+}
 
+function topThemeLabel(rows) {
+  return rows?.[0]?.theme_label || "Not enough theme data";
+}
+
+function topLineLabel(rows) {
+  return rows?.[0]?.line_name || "No line signal";
+}
+
+function Surface({ title, subtitle, action, children, className = "" }) {
   return (
-    <div className="w-full">
-      <div className="flex items-center justify-between text-xs text-zinc-400 mb-2">
-        <span>Complaints vs Praise</span>
-        <span>{total} signals</span>
-      </div>
-
-      <div className="h-3 w-full rounded-full overflow-hidden bg-zinc-900 border border-zinc-800">
-        <div className="h-full flex">
-          <div style={{ width: `${complaintsPct}%` }} className="h-full bg-red-500/70" />
-          <div style={{ width: `${praisePct}%` }} className="h-full bg-emerald-500/70" />
+    <section
+      className={`rounded-[2rem] border border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.86),rgba(15,23,42,0.68))] shadow-[0_24px_80px_rgba(15,23,42,0.35)] backdrop-blur ${className}`}
+    >
+      {(title || subtitle || action) && (
+        <div className="flex items-start justify-between gap-4 border-b border-white/10 px-6 py-5">
+          <div>
+            {title ? <h2 className="text-lg font-semibold text-slate-50">{title}</h2> : null}
+            {subtitle ? <p className="mt-1 text-sm text-slate-400">{subtitle}</p> : null}
+          </div>
+          {action}
         </div>
-      </div>
-
-      <div className="mt-2 text-xs text-zinc-400 flex flex-wrap gap-x-4 gap-y-1">
-        <span>
-          Complaints: <span className="text-zinc-200">{complaints}</span>{" "}
-          <span className="text-zinc-500">
-            (neg {neg} + high-sev neu {highSevNeutral})
-          </span>
-        </span>
-        <span>
-          Praise: <span className="text-zinc-200">{praise}</span>
-        </span>
-        <span className="text-zinc-500">
-          threshold: sev ≥ {highSevThreshold}
-        </span>
-      </div>
-    </div>
+      )}
+      <div className="px-6 py-5">{children}</div>
+    </section>
   );
 }
-function VolatilityMeter({ feed }) {
-  const scores = (Array.isArray(feed) ? feed : [])
-    .map((f) => Number(f?.severity_score))
-    .filter((n) => !Number.isNaN(n));
 
-  if (!scores.length) {
-    return <div className="text-xs text-zinc-500">No severity data</div>;
-  }
-
-  const mean = scores.reduce((a, b) => a + b, 0) / scores.length;
-  const variance =
-    scores.reduce((acc, s) => acc + Math.pow(s - mean, 2), 0) / scores.length;
-  const stdDev = Math.sqrt(variance);
-
-  // Normalize 0–0.5 → 0–100 (severity usually 0–1)
-  const pct = Math.min(100, Math.max(0, (stdDev / 0.5) * 100));
-
-  let label = "Stable";
-  if (pct > 65) label = "Chaotic";
-  else if (pct > 35) label = "Mixed";
-
+function KPI({ label, value, hint }) {
   return (
-    <div className="w-full">
-      <div className="flex items-center justify-between text-xs text-zinc-400 mb-2">
-        <span>Experience volatility</span>
-        <span>{label}</span>
-      </div>
-
-      <div className="relative h-3 w-full rounded-full bg-zinc-900 border border-zinc-800">
-        <div className="absolute inset-0 rounded-full bg-gradient-to-r from-emerald-500/60 via-amber-400/60 to-red-500/60" />
-        <div
-          className="absolute top-1/2 -translate-y-1/2 w-2 h-5 rounded bg-white shadow"
-          style={{ left: `calc(${pct}% - 4px)` }}
-        />
-      </div>
-
-      <div className="mt-2 text-xs text-zinc-500">
-        Std dev of severity: {stdDev.toFixed(3)}
-      </div>
+    <div className="rounded-[1.5rem] border border-white/10 bg-white/5 px-4 py-4">
+      <div className="text-xs uppercase tracking-[0.18em] text-slate-400">{label}</div>
+      <div className="mt-2 text-2xl font-semibold text-white">{value}</div>
+      {hint ? <div className="mt-1 text-sm text-slate-400">{hint}</div> : null}
     </div>
   );
 }
 
-function SentimentBar({ sentiment }) {
-  const neg = sentiment?.neg_count ?? 0;
-  const neu = sentiment?.neu_count ?? 0;
-  const pos = sentiment?.pos_count ?? 0;
-  const total = neg + neu + pos || 1;
-
-  const negPct = (neg / total) * 100;
-  const neuPct = (neu / total) * 100;
-  const posPct = (pos / total) * 100;
+function ThemeChip({ label, count, tone = "neutral" }) {
+  const tones = {
+    neutral: "border-cyan-400/20 bg-cyan-400/10 text-cyan-100",
+    positive: "border-emerald-400/25 bg-emerald-400/10 text-emerald-100",
+    negative: "border-rose-400/25 bg-rose-400/10 text-rose-100",
+  };
 
   return (
-    <div className="w-full">
-      <div className="flex items-center justify-between text-xs text-zinc-400 mb-2">
-        <span>Sentiment mix</span>
-        <span>{total} comments</span>
-      </div>
+    <div className={`rounded-full border px-3 py-1.5 text-xs ${tones[tone]}`}>
+      {label}
+      {typeof count === "number" ? <span className="ml-1 text-slate-300">({count})</span> : null}
+    </div>
+  );
+}
 
-      <div className="h-3 w-full rounded-full overflow-hidden bg-zinc-900 border border-zinc-800">
-        <div className="h-full flex">
-          <div style={{ width: `${negPct}%` }} className="h-full bg-red-500/70" />
-          <div style={{ width: `${neuPct}%` }} className="h-full bg-zinc-500/70" />
-          <div style={{ width: `${posPct}%` }} className="h-full bg-emerald-500/70" />
-        </div>
+function PostCard({ post }) {
+  return (
+    <a
+      href={post.permalink || post.url || "#"}
+      target="_blank"
+      rel="noreferrer"
+      className="block rounded-[1.35rem] border border-white/10 bg-white/5 p-4 transition hover:border-cyan-300/30 hover:bg-white/8"
+    >
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
+        <span>r/{post.subreddit || "unknown"}</span>
+        <span>{formatDate(post.created_utc)}</span>
+        <span>{formatNumber(post.score)} score</span>
+        <span>{formatNumber(post.num_comments)} comments</span>
       </div>
+      <h3 className="mt-2 text-sm font-semibold leading-6 text-slate-50">
+        {post.title || "Untitled Reddit post"}
+      </h3>
+      {post.preview ? <p className="mt-2 text-sm leading-6 text-slate-300">{post.preview}</p> : null}
+      <div className="mt-3 text-xs text-cyan-200">
+        {post.cruise_line || "Cruise line not inferred"} • sentiment {formatSigned(post.sentiment_score)}
+      </div>
+    </a>
+  );
+}
 
-      <div className="mt-2 flex gap-3 text-xs text-zinc-400">
-        <span>
-          Neg: <span className="text-zinc-200">{neg}</span>
-        </span>
-        <span>
-          Neu: <span className="text-zinc-200">{neu}</span>
-        </span>
-        <span>
-          Pos: <span className="text-zinc-200">{pos}</span>
-        </span>
+function CompareMetric({ label, left, right }) {
+  return (
+    <div className="rounded-[1.25rem] border border-white/10 bg-white/5 px-4 py-3">
+      <div className="text-xs uppercase tracking-[0.16em] text-slate-400">{label}</div>
+      <div className="mt-2 grid grid-cols-2 gap-3 text-sm text-slate-100">
+        <div>{left}</div>
+        <div>{right}</div>
       </div>
     </div>
   );
 }
 
 export default function PortsPage() {
-  // list
   const [ports, setPorts] = useState([]);
-  const [portsLoading, setPortsLoading] = useState(true);
-  const [portsErr, setPortsErr] = useState("");
-
+  const [loadingPorts, setLoadingPorts] = useState(true);
+  const [portsError, setPortsError] = useState("");
+  const [selectedPortId, setSelectedPortId] = useState("");
+  const [comparePortId, setComparePortId] = useState("");
   const [query, setQuery] = useState("");
-  const [selectedPortId, setSelectedPortId] = useState(null);
+  const [region, setRegion] = useState("all");
+  const [sentimentFilter, setSentimentFilter] = useState("all");
+  const [sortBy, setSortBy] = useState("mentions");
+  const [postTab, setPostTab] = useState("top");
+  const [selectedOverview, setSelectedOverview] = useState(null);
+  const [compareOverview, setCompareOverview] = useState(null);
+  const [loadingOverview, setLoadingOverview] = useState(false);
+  const [overviewError, setOverviewError] = useState("");
 
-  // detail
-  const [summary, setSummary] = useState(null); // keep whole summary object
-  const [themes, setThemes] = useState([]);
-  const [feed, setFeed] = useState([]);
-  const [trend, setTrend] = useState([]);
+  const deferredQuery = useDeferredValue(query);
 
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [detailErr, setDetailErr] = useState("");
-
-  // filters
-  const [activeTheme, setActiveTheme] = useState(null);
-  const [themeQuery, setThemeQuery] = useState("");
-
-  // load ports
   useEffect(() => {
     let alive = true;
-    setPortsLoading(true);
-    setPortsErr("");
+    setLoadingPorts(true);
+    setPortsError("");
 
-    CruiseAPI.ports(500)
-      .then((data) => {
+    CruiseAPI.portsIntelligence(120)
+      .then((rows) => {
         if (!alive) return;
-        const arr = Array.isArray(data) ? data : [];
-        setPorts(arr);
-        if (!selectedPortId && arr.length) setSelectedPortId(arr[0].id);
+        const merged = (Array.isArray(rows) ? rows : [])
+          .map((row) => {
+            const geo = portsGeo[row.port_id] || {};
+            return {
+              ...row,
+              ...geo,
+              country: geo.country || "Unknown",
+              region: geo.region || "Other",
+              lat: geo.lat,
+              lon: geo.lon,
+            };
+          })
+          .filter((row) => row.name);
+
+        setPorts(merged);
+        if (merged.length) {
+          setSelectedPortId((current) => current || merged[0].port_id);
+          setComparePortId((current) => current || merged[1]?.port_id || merged[0].port_id);
+        }
       })
-      .catch((e) => alive && setPortsErr(String(e?.message || e)))
-      .finally(() => alive && setPortsLoading(false));
+      .catch((error) => {
+        if (!alive) return;
+        setPortsError(String(error?.message || error));
+      })
+      .finally(() => {
+        if (alive) setLoadingPorts(false);
+      });
 
     return () => {
       alive = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const selectedPortObj = useMemo(() => {
-    if (!selectedPortId) return null;
-    return ports.find((p) => p.id === selectedPortId) || null;
-  }, [ports, selectedPortId]);
-
-  const filteredPorts = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return ports;
-    return ports.filter((p) => ((p.name || p.id || "") + "").toLowerCase().includes(q));
-  }, [ports, query]);
-
-  const filteredThemes = useMemo(() => {
-    const q = themeQuery.trim().toLowerCase();
-    if (!q) return themes;
-    return themes.filter((t) => (t?.theme_label || "").toLowerCase().includes(q));
-  }, [themes, themeQuery]);
-
-  // load details
   useEffect(() => {
     if (!selectedPortId) return;
     let alive = true;
-
-    setDetailLoading(true);
-    setDetailErr("");
+    setLoadingOverview(true);
+    setOverviewError("");
 
     Promise.all([
-      CruiseAPI.portSummary(selectedPortId),
-      CruiseAPI.portThemes(selectedPortId, 15, 30),
-      CruiseAPI.portFeed(selectedPortId, 25, activeTheme),
-      CruiseAPI.portTrend(selectedPortId),
+      CruiseAPI.portOverview(selectedPortId),
+      comparePortId && comparePortId !== selectedPortId ? CruiseAPI.portOverview(comparePortId) : Promise.resolve(null),
     ])
-      .then(([s, t, f, tr]) => {
+      .then(([selected, compare]) => {
         if (!alive) return;
-        setSummary(s || null);
-        setThemes(Array.isArray(t) ? t : []);
-        setFeed(Array.isArray(f) ? f : []);
-        setTrend(Array.isArray(tr) ? tr : []);
+        setSelectedOverview(selected);
+        setCompareOverview(compare);
       })
-      .catch((e) => alive && setDetailErr(String(e?.message || e)))
-      .finally(() => alive && setDetailLoading(false));
+      .catch((error) => {
+        if (!alive) return;
+        setOverviewError(String(error?.message || error));
+      })
+      .finally(() => {
+        if (alive) setLoadingOverview(false);
+      });
 
     return () => {
       alive = false;
     };
-  }, [selectedPortId, activeTheme]);
+  }, [selectedPortId, comparePortId]);
 
-  // clear theme filter when switching ports
-  useEffect(() => {
-    setActiveTheme(null);
-    setThemeQuery("");
-  }, [selectedPortId]);
+  const filteredPorts = useMemo(() => {
+    const q = deferredQuery.trim().toLowerCase();
+    const sorted = [...ports]
+      .filter((port) => {
+        const matchesQuery =
+          !q ||
+          `${port.name} ${port.country} ${port.region} ${port.port_id}`.toLowerCase().includes(q);
+        const matchesRegion = region === "all" || port.region === region;
+        const matchesSentiment =
+          sentimentFilter === "all" || sentimentBucket(port.avg_sentiment) === sentimentFilter;
+        return matchesQuery && matchesRegion && matchesSentiment;
+      })
+      .sort((a, b) => {
+        if (sortBy === "pulse") return (b.pulse_score || 0) - (a.pulse_score || 0);
+        if (sortBy === "sentiment") return (b.avg_sentiment || 0) - (a.avg_sentiment || 0);
+        return (b.mentions || 0) - (a.mentions || 0);
+      });
 
-  // normalize
-  const sentiment = summary?.sentiment || summary || null; // supports either shape
+    return sorted;
+  }, [deferredQuery, ports, region, sentimentFilter, sortBy]);
 
-  const mentions =
-    summary?.mentions ??
-    sentiment?.mentions ??
-    selectedPortObj?.mentions ??
-    null;
+  const regions = useMemo(
+    () => ["all", ...new Set(ports.map((port) => port.region).filter(Boolean))],
+    [ports]
+  );
 
-  const avgSent =
-    summary?.avg_sentiment ??
-    sentiment?.avg_sentiment ??
-    null;
+  const selectedPort = useMemo(
+    () => ports.find((port) => port.port_id === selectedPortId) || null,
+    [ports, selectedPortId]
+  );
 
-  const avgSev =
-    summary?.avg_severity ??
-    sentiment?.avg_severity ??
-    null;
+  const aggregateStats = useMemo(() => {
+    const totalMentions = filteredPorts.reduce((sum, port) => sum + (port.mentions || 0), 0);
+    const avgPulse =
+      filteredPorts.reduce((sum, port) => sum + Number(port.pulse_score || 0), 0) /
+      Math.max(filteredPorts.length, 1);
+    const positivePorts = filteredPorts.filter((port) => sentimentBucket(port.avg_sentiment) === "positive").length;
+    return {
+      totalMentions,
+      avgPulse,
+      positivePorts,
+    };
+  }, [filteredPorts]);
 
-  const selectedPortTitle = selectedPortObj?.name || selectedPortId || "—";
+  const trendData = useMemo(
+    () =>
+      (selectedOverview?.trend || []).map((row) => ({
+        month: formatMonth(row.month),
+        mentions: row.mentions,
+        avg_sent: row.avg_sent,
+      })),
+    [selectedOverview]
+  );
+
+  const postTabs = [
+    { key: "top", label: "Top liked" },
+    { key: "most_commented", label: "Most commented" },
+    { key: "recent", label: "Most recent" },
+  ];
+  const postRows = selectedOverview?.posts?.[postTab] || [];
 
   return (
-    <div className="h-full grid grid-cols-[360px_1fr_440px]">
-      {/* LEFT */}
-      <aside className="border-r border-zinc-800 bg-zinc-950/40 overflow-hidden flex flex-col min-w-0">
-        <div className="p-4 border-b border-zinc-800">
-          <div className="text-xs text-zinc-400 mb-2">Search ports</div>
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Cozumel, Nassau, Roatan…"
-            className="w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-2 text-sm outline-none focus:border-zinc-600"
-          />
-
-          <div className="mt-3 flex items-center justify-between text-xs text-zinc-500">
-            <span>{portsLoading ? "Loading…" : `${filteredPorts.length} ports`}</span>
-            <span className="truncate">Top by mentions</span>
-          </div>
-
-          {portsErr && <div className="mt-3 text-xs text-red-300 whitespace-pre-wrap">{portsErr}</div>}
-        </div>
-
-        <div className="flex-1 overflow-y-auto">
-          {filteredPorts.map((p) => {
-            const active = p.id === selectedPortId;
-            return (
-              <button
-                key={p.id}
-                onClick={() => setSelectedPortId(p.id)}
-                className={`w-full text-left px-4 py-3 border-b border-zinc-900/60 hover:bg-zinc-900/40 ${
-                  active ? "bg-zinc-900/60" : ""
-                }`}
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div className="text-sm font-medium truncate">{p.name}</div>
-                  <div className="text-[11px] text-zinc-500 shrink-0">{p.mentions ?? 0}</div>
-                </div>
-                <div className="text-[11px] text-zinc-500 mt-1 truncate">id: {p.id}</div>
-              </button>
-            );
-          })}
-
-          {!portsLoading && filteredPorts.length === 0 && (
-            <div className="p-4 text-sm text-zinc-500">No ports match that search.</div>
-          )}
-        </div>
-      </aside>
-
-      {/* CENTER */}
-      <section className="relative overflow-hidden min-w-0">
-        <div
-            className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(34,197,94,0.10),transparent_45%),radial-gradient(circle_at_70%_30%,rgba(59,130,246,0.10),transparent_40%),radial-gradient(circle_at_60%_80%,rgba(244,63,94,0.10),transparent_45%)]"/>
-
-        <div className="relative h-full p-6 min-w-0 flex flex-col min-h-0">
-          <div className="flex items-center justify-between">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.12),transparent_30%),radial-gradient(circle_at_80%_10%,rgba(14,165,233,0.18),transparent_28%),linear-gradient(180deg,#020617,#081225_42%,#0f172a)] text-slate-100">
+      <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-6 px-4 py-6 lg:px-6">
+        <Surface className="overflow-hidden">
+          <div className="grid gap-8 lg:grid-cols-[1.35fr_0.95fr]">
             <div>
-              <div className="text-xs text-zinc-400">World view</div>
-              <div className="text-lg font-semibold">Port Map</div>
-            </div>
-            <div className="text-xs text-zinc-500">Click a marker → select port</div>
-          </div>
-
-          <div className="mt-6 h-[520px] min-w-0 shrink-0">
-            <PortsMap ports={ports} selectedPort={selectedPortId} onSelect={setSelectedPortId}/>
-          </div>
-
-          <div className="mt-6 min-w-0 flex-1 min-h-0 overflow-y-auto pr-1">
-            {selectedPortId ? <PortBreakdown portId={selectedPortId}/> : null}
-          </div>
-        </div>
-      </section>
-
-
-      {/* RIGHT */}
-      <aside className="border-l border-zinc-800 bg-zinc-950/40 overflow-hidden flex flex-col min-w-0">
-        {/* summary header */}
-        <div className="p-5 border-b border-zinc-800 min-w-0">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="text-xs text-zinc-400">Selected port</div>
-              <div className="mt-1 text-xl font-semibold truncate">{selectedPortTitle}</div>
-              <div className="text-[11px] text-zinc-500 mt-1 truncate">id: {selectedPortId || "—"}</div>
-            </div>
-            <div className="text-xs text-zinc-500 pt-1">{detailLoading ? "Loading…" : ""}</div>
-          </div>
-
-          <div className="mt-4 grid grid-cols-2 gap-3 min-w-0">
-            <StatPill label="Mentions" value={mentions}/>
-            <StatPill
-                label="Avg Sentiment"
-                value={typeof avgSent === "number" ? avgSent.toFixed(3) : "—"}
-            />
-            <StatPill
-              label="Avg Severity"
-              value={typeof avgSev === "number" ? avgSev.toFixed(3) : "—"}
-            />
-            <StatPill label="Number of Themes" value={themes?.length ?? 0} />
-          </div>
-
-          {/* IMPORTANT: these two cards MUST have overflow-hidden + fixed heights */}
-          <div className="mt-4 grid grid-cols-2 gap-3 min-w-0">
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-3 overflow-hidden min-w-0">
-              <div className="text-xs text-zinc-400 mb-2">Sentiment Donut</div>
-              <div className="w-full h-[220px] min-w-0">
-                <SentimentDonut summary={sentiment}/>
+              <div className="inline-flex rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-xs uppercase tracking-[0.18em] text-cyan-100">
+                Cruise Port Intelligence Map
               </div>
+              <h1 className="mt-4 max-w-4xl text-4xl font-semibold tracking-tight text-white md:text-5xl">
+                Explore what travelers are saying about cruise ports across Reddit.
+              </h1>
+              <p className="mt-4 max-w-3xl text-base leading-8 text-slate-300 md:text-lg">
+                A location-based intelligence platform that maps traveler sentiment, engagement,
+                themes, and cruise-line association by destination.
+              </p>
             </div>
 
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-3 overflow-hidden min-w-0">
-              <div className="text-xs text-zinc-400 mb-2">Volatility</div>
-              <VolatilityMeter feed={feed}/>
+            <div className="grid gap-3 md:grid-cols-2">
+              <KPI label="Tracked Ports" value={formatNumber(filteredPorts.length)} hint="Ports with mapped metadata and Reddit signal" />
+              <KPI label="Mentions" value={formatNumber(aggregateStats.totalMentions)} hint="Comment-level mentions in the current view" />
+              <KPI label="Avg Pulse" value={aggregateStats.avgPulse.toFixed(1)} hint="Weighted blend of volume, sentiment, and engagement" />
+              <KPI
+                label="Positive Ports"
+                value={formatPercent(aggregateStats.positivePorts, filteredPorts.length)}
+                hint="Share of visible ports trending positive"
+              />
             </div>
           </div>
+        </Surface>
 
-          {detailErr && <div className="mt-4 text-xs text-red-300 whitespace-pre-wrap">{detailErr}</div>}
-        </div>
+        <div className="grid gap-6 xl:grid-cols-[19rem_minmax(0,1fr)_28rem]">
+          <div className="space-y-6">
+            <Surface title="Filters" subtitle="Focus the map by region, mood, and port name.">
+              <div className="space-y-4">
+                <label className="block">
+                  <span className="mb-2 block text-xs uppercase tracking-[0.16em] text-slate-400">Search</span>
+                  <input
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder="Cozumel, Nassau, Miami..."
+                    className="w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm outline-none ring-0 transition placeholder:text-slate-500 focus:border-cyan-300/40"
+                  />
+                </label>
 
-        {/* scroll */}
-        <div className="flex-1 overflow-y-auto min-w-0">
-          {/* themes */}
-          <div className="p-5 border-b border-zinc-900/60 min-w-0">
-            <div className="flex items-center justify-between mb-3">
-              <div className="text-sm font-semibold">Theme Composition</div>
-              {activeTheme ? (
-                <button
-                  onClick={() => setActiveTheme(null)}
-                  className="text-xs px-2 py-1 rounded-md border border-zinc-800 bg-zinc-950/60 hover:bg-zinc-900/50"
+                <label className="block">
+                  <span className="mb-2 block text-xs uppercase tracking-[0.16em] text-slate-400">Region</span>
+                  <select
+                    value={region}
+                    onChange={(event) => setRegion(event.target.value)}
+                    className="w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm outline-none focus:border-cyan-300/40"
+                  >
+                    {regions.map((value) => (
+                      <option key={value} value={value}>
+                        {value === "all" ? "All regions" : value}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="block">
+                  <span className="mb-2 block text-xs uppercase tracking-[0.16em] text-slate-400">Sentiment</span>
+                  <select
+                    value={sentimentFilter}
+                    onChange={(event) => setSentimentFilter(event.target.value)}
+                    className="w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm outline-none focus:border-cyan-300/40"
+                  >
+                    <option value="all">All sentiment</option>
+                    <option value="positive">Positive leaning</option>
+                    <option value="mixed">Mixed</option>
+                    <option value="negative">Negative leaning</option>
+                  </select>
+                </label>
+
+                <label className="block">
+                  <span className="mb-2 block text-xs uppercase tracking-[0.16em] text-slate-400">Sort</span>
+                  <select
+                    value={sortBy}
+                    onChange={(event) => setSortBy(event.target.value)}
+                    className="w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm outline-none focus:border-cyan-300/40"
+                  >
+                    <option value="mentions">Most mentions</option>
+                    <option value="pulse">Highest pulse score</option>
+                    <option value="sentiment">Best sentiment</option>
+                  </select>
+                </label>
+              </div>
+            </Surface>
+
+            <Surface
+              title="Port Leaderboard"
+              subtitle={loadingPorts ? "Loading live Reddit destination signal..." : `${filteredPorts.length} ports in view`}
+            >
+              <div className="space-y-3">
+                {filteredPorts.map((port) => {
+                  const active = port.port_id === selectedPortId;
+                  return (
+                    <button
+                      key={port.port_id}
+                      onClick={() => setSelectedPortId(port.port_id)}
+                      className={`w-full rounded-[1.35rem] border px-4 py-4 text-left transition ${
+                        active
+                          ? "border-cyan-300/40 bg-cyan-300/10"
+                          : "border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/8"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-base font-semibold text-white">{port.name}</div>
+                          <div className="mt-1 text-sm text-slate-400">
+                            {port.country} • {port.region}
+                          </div>
+                        </div>
+                        <div className="rounded-full border border-white/10 px-2.5 py-1 text-xs text-slate-300">
+                          {formatNumber(port.mentions)}
+                        </div>
+                      </div>
+                      <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-slate-300">
+                        <div>
+                          <div className="text-slate-500">Pulse</div>
+                          <div className="mt-1">{port.pulse_score}</div>
+                        </div>
+                        <div>
+                          <div className="text-slate-500">Sentiment</div>
+                          <div className="mt-1">{formatSigned(port.avg_sentiment)}</div>
+                        </div>
+                        <div>
+                          <div className="text-slate-500">Posts</div>
+                          <div className="mt-1">{formatNumber(port.post_mentions)}</div>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+
+                {!loadingPorts && filteredPorts.length === 0 ? (
+                  <div className="rounded-[1.35rem] border border-dashed border-white/10 bg-white/5 px-4 py-6 text-sm text-slate-400">
+                    No ports match the current filter set.
+                  </div>
+                ) : null}
+
+                {portsError ? <div className="text-sm text-rose-300">{portsError}</div> : null}
+              </div>
+            </Surface>
+          </div>
+
+          <div className="space-y-6">
+            <Surface
+              title="Interactive Destination Map"
+              subtitle="Marker size reflects discussion volume. Marker color tracks sentiment balance."
+              action={
+                <div className="text-right text-xs text-slate-400">
+                  <div>Selected port</div>
+                  <div className="mt-1 font-semibold text-slate-100">{selectedPort?.name || "None"}</div>
+                </div>
+              }
+            >
+              <PortsMap
+                ports={filteredPorts.filter((port) => typeof port.lat === "number" && typeof port.lon === "number")}
+                selectedPortId={selectedPortId}
+                onSelect={setSelectedPortId}
+              />
+
+              <div className="mt-4 flex flex-wrap gap-2 text-xs text-slate-300">
+                <ThemeChip label="Positive signal" tone="positive" />
+                <ThemeChip label="Mixed signal" tone="neutral" />
+                <ThemeChip label="Negative signal" tone="negative" />
+              </div>
+            </Surface>
+
+            <Surface
+              title="Compare Ports"
+              subtitle="Put two destinations side by side to contrast attention, mood, and traveler concerns."
+              action={
+                <select
+                  value={comparePortId}
+                  onChange={(event) => setComparePortId(event.target.value)}
+                  className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-2 text-sm outline-none focus:border-cyan-300/40"
                 >
-                  Clear filter
-                </button>
-              ) : null}
-            </div>
-
-            {/* Fixed height + overflow-hidden prevents pie from drawing over other cards */}
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4 overflow-hidden min-w-0">
-              <div className="w-full h-[260px] min-w-0">
-                <ThemeDonut themes={themes} />
+                  {ports
+                    .filter((port) => port.port_id !== selectedPortId)
+                    .map((port) => (
+                      <option key={port.port_id} value={port.port_id}>
+                        {port.name}
+                      </option>
+                    ))}
+                </select>
+              }
+            >
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="rounded-[1.5rem] border border-cyan-300/20 bg-cyan-300/8 p-5">
+                  <div className="text-xs uppercase tracking-[0.18em] text-cyan-100">Primary</div>
+                  <div className="mt-2 text-2xl font-semibold text-white">{selectedOverview?.port?.name || selectedPort?.name || "Select a port"}</div>
+                  <div className="mt-2 text-sm text-slate-300">
+                    {selectedPort?.country} • {selectedPort?.region}
+                  </div>
+                </div>
+                <div className="rounded-[1.5rem] border border-white/10 bg-white/5 p-5">
+                  <div className="text-xs uppercase tracking-[0.18em] text-slate-400">Comparison</div>
+                  <div className="mt-2 text-2xl font-semibold text-white">{compareOverview?.port?.name || "Pick a port"}</div>
+                  <div className="mt-2 text-sm text-slate-300">
+                    {ports.find((port) => port.port_id === comparePortId)?.country || "Unknown"} •{" "}
+                    {ports.find((port) => port.port_id === comparePortId)?.region || "Unknown"}
+                  </div>
+                </div>
               </div>
-            </div>
 
-            <input
-              value={themeQuery}
-              onChange={(e) => setThemeQuery(e.target.value)}
-              placeholder="Filter themes…"
-              className="mt-4 w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-2 text-sm outline-none focus:border-zinc-600"
-            />
-
-            {activeTheme && (
-              <div className="mt-3 text-xs text-zinc-400">
-                Filtering feed by: <span className="text-zinc-200 font-medium">{activeTheme}</span>
+              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <CompareMetric
+                  label="Mentions"
+                  left={formatNumber(selectedOverview?.port?.mentions)}
+                  right={formatNumber(compareOverview?.port?.mentions)}
+                />
+                <CompareMetric
+                  label="Pulse"
+                  left={selectedOverview?.port?.pulse_score ?? "n/a"}
+                  right={compareOverview?.port?.pulse_score ?? "n/a"}
+                />
+                <CompareMetric
+                  label="Sentiment"
+                  left={formatSigned(selectedOverview?.port?.avg_sentiment)}
+                  right={formatSigned(compareOverview?.port?.avg_sentiment)}
+                />
+                <CompareMetric
+                  label="Top Line"
+                  left={topLineLabel(selectedOverview?.top_lines)}
+                  right={topLineLabel(compareOverview?.top_lines)}
+                />
+                <CompareMetric
+                  label="Traveler Concern"
+                  left={topThemeLabel(selectedOverview?.traveler_concerns)}
+                  right={topThemeLabel(compareOverview?.traveler_concerns)}
+                />
+                <CompareMetric
+                  label="Traveler Favorite"
+                  left={topThemeLabel(selectedOverview?.traveler_favorites)}
+                  right={topThemeLabel(compareOverview?.traveler_favorites)}
+                />
               </div>
-            )}
+            </Surface>
+          </div>
 
-            <div className="mt-3 space-y-2 min-w-0">
-              {filteredThemes.slice(0, 20).map((t) => {
-                const label = t?.theme_label || "—";
-                const isActive = label === activeTheme;
+          <div className="space-y-6">
+            <Surface
+              title={selectedOverview?.port?.name || "Port Detail"}
+              subtitle="Destination-level Reddit intelligence panel"
+              action={loadingOverview ? <div className="text-sm text-slate-400">Refreshing…</div> : null}
+            >
+              <div className="grid gap-3 sm:grid-cols-2">
+                <KPI label="Mentions" value={formatNumber(selectedOverview?.port?.mentions)} hint="Comment-level references" />
+                <KPI label="Port Pulse" value={selectedOverview?.port?.pulse_score ?? "n/a"} hint="Composite score out of 100" />
+                <KPI
+                  label="Sentiment"
+                  value={formatSigned(selectedOverview?.port?.avg_sentiment)}
+                  hint={`${formatPercent(selectedOverview?.port?.pos_count, selectedOverview?.port?.mentions)} positive`}
+                />
+                <KPI
+                  label="Cruise Posts"
+                  value={formatNumber(selectedOverview?.port?.post_mentions)}
+                  hint="Posts explicitly tied to this port"
+                />
+              </div>
 
-                return (
+              <div className="mt-5 grid gap-5">
+                <div>
+                  <div className="text-xs uppercase tracking-[0.16em] text-slate-400">Most Associated Cruise Lines</div>
+                  <div className="mt-3 space-y-3">
+                    {(selectedOverview?.top_lines || []).map((row) => (
+                      <div key={row.line_id} className="rounded-[1.25rem] border border-white/10 bg-white/5 px-4 py-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-sm font-medium text-slate-100">{row.line_name}</div>
+                          <div className="text-xs text-slate-400">{row.mention_pct}%</div>
+                        </div>
+                        <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-900">
+                          <div className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-sky-500" style={{ width: `${row.mention_pct}%` }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-xs uppercase tracking-[0.16em] text-slate-400">Keyword Clusters</div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {(selectedOverview?.keywords || []).map((row) => (
+                      <ThemeChip key={row.keyword} label={row.keyword} count={row.n} />
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.16em] text-slate-400">Traveler Favorites</div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {(selectedOverview?.traveler_favorites || []).map((row) => (
+                        <ThemeChip key={row.theme_label} label={row.theme_label} count={row.n} tone="positive" />
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.16em] text-slate-400">Traveler Concerns</div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {(selectedOverview?.traveler_concerns || []).map((row) => (
+                        <ThemeChip key={row.theme_label} label={row.theme_label} count={row.n} tone="negative" />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Surface>
+
+            <Surface title="Trends Over Time" subtitle="Mentions by month with average sentiment trendline.">
+              <div className="h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={trendData}>
+                    <defs>
+                      <linearGradient id="mentionsGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#22d3ee" stopOpacity={0.7} />
+                        <stop offset="100%" stopColor="#22d3ee" stopOpacity={0.05} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid stroke="rgba(148,163,184,0.12)" vertical={false} />
+                    <XAxis dataKey="month" stroke="#94a3b8" tickLine={false} axisLine={false} />
+                    <YAxis yAxisId="left" stroke="#94a3b8" tickLine={false} axisLine={false} />
+                    <YAxis yAxisId="right" orientation="right" stroke="#64748b" tickLine={false} axisLine={false} />
+                    <Tooltip />
+                    <Area yAxisId="left" type="monotone" dataKey="mentions" stroke="#22d3ee" fill="url(#mentionsGradient)" strokeWidth={2.5} />
+                    <Bar yAxisId="right" dataKey="avg_sent" fill="#f59e0b" radius={[8, 8, 0, 0]} barSize={12} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className="mt-4">
+                <div className="text-xs uppercase tracking-[0.16em] text-slate-400">Spike Detection</div>
+                <div className="mt-3 grid gap-3">
+                  {(selectedOverview?.spikes || []).map((spike) => (
+                    <div key={spike.month} className="rounded-[1.25rem] border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-50">
+                      {formatMonth(spike.month)} jumped by {formatNumber(spike.delta_mentions)} mentions to{" "}
+                      {formatNumber(spike.mentions)} total, a {spike.spike_ratio}x month-over-month increase.
+                    </div>
+                  ))}
+                  {!selectedOverview?.spikes?.length ? (
+                    <div className="rounded-[1.25rem] border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-400">
+                      No sharp mention spikes detected in the current monthly series.
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </Surface>
+
+            <Surface title="Post Explorer" subtitle="Top liked, most debated, and freshest port discussions.">
+              <div className="mb-4 flex flex-wrap gap-2">
+                {postTabs.map((tab) => (
                   <button
-                    key={label}
-                    onClick={() => setActiveTheme((cur) => (cur === label ? null : label))}
-                    className={`w-full text-left rounded-lg border px-3 py-2 transition min-w-0 ${
-                      isActive
-                        ? "border-emerald-500/60 bg-emerald-500/10"
-                        : "border-zinc-800 bg-zinc-950/60 hover:bg-zinc-900/50"
+                    key={tab.key}
+                    onClick={() => setPostTab(tab.key)}
+                    className={`rounded-full border px-4 py-2 text-sm transition ${
+                      postTab === tab.key
+                        ? "border-cyan-300/40 bg-cyan-300/10 text-cyan-100"
+                        : "border-white/10 bg-white/5 text-slate-300 hover:border-white/20"
                     }`}
                   >
-                    <div className="flex items-center justify-between gap-2 min-w-0">
-                      <div className="text-sm font-medium truncate">{label}</div>
-                      <div className="text-xs text-zinc-500 shrink-0">{t?.n ?? 0}</div>
-                    </div>
-
-                    <div className="mt-1 text-xs text-zinc-500">
-                      avg_sent: {t?.avg_sent?.toFixed?.(3) ?? "—"} • neg: {t?.neg_count ?? 0}
-                    </div>
-
-                    {isActive && (
-                      <div className="mt-1 text-[11px] text-emerald-300/90">Applied to feed</div>
-                    )}
+                    {tab.label}
                   </button>
-                );
-              })}
-
-              {!detailLoading && filteredThemes.length === 0 && (
-                <div className="text-sm text-zinc-500">No themes match that filter.</div>
-              )}
-            </div>
-          </div>
-
-          {/* trend */}
-          <div className="p-5 border-b border-zinc-900/60 min-w-0">
-            <div className="text-sm font-semibold mb-2">Trend</div>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4 overflow-hidden min-w-0">
-              <div className="w-full h-[260px] min-w-0">
-                <TrendLine data={trend} />
+                ))}
               </div>
-            </div>
-          </div>
 
-          {/* feed */}
-          <div className="p-5 min-w-0">
-            <div className="flex items-center justify-between gap-3 min-w-0">
-              <div className="text-sm font-semibold truncate">
-                Worst experiences (by severity){activeTheme ? ` • ${activeTheme}` : ""}
+              <div className="space-y-3">
+                {postRows.map((post) => (
+                  <PostCard key={`${postTab}-${post.post_id}`} post={post} />
+                ))}
+                {!postRows.length ? (
+                  <div className="rounded-[1.35rem] border border-white/10 bg-white/5 px-4 py-6 text-sm text-slate-400">
+                    No posts available for this port and view.
+                  </div>
+                ) : null}
               </div>
-              <div className="text-xs text-zinc-500 shrink-0">{detailLoading ? "Loading…" : ""}</div>
-            </div>
+            </Surface>
 
-            <div className="mt-3 space-y-3 min-w-0">
-              {feed.slice(0, 25).map((item) => (
-                <a
-                  key={item.object_id || item.permalink}
-                  href={item.permalink || "#"}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="block rounded-xl border border-zinc-800 bg-zinc-950/60 hover:bg-zinc-900/50 p-4 min-w-0"
-                >
-                  <div className="flex items-center justify-between text-xs text-zinc-500 gap-2 min-w-0">
-                    <span className="truncate">{item.subreddit || "—"}</span>
-                    <span className="shrink-0">
-                      sev {item.severity_score?.toFixed?.(3) ?? "—"} • sent{" "}
-                      {item.sentiment_score?.toFixed?.(3) ?? "—"}
-                    </span>
-                  </div>
-
-                  <div className="mt-2 text-sm text-zinc-200 leading-relaxed">
-                    {item.preview || ""}
-                    {item.preview?.length >= 230 ? "…" : ""}
-                  </div>
-
-                  <div className="mt-2 text-xs text-zinc-500">
-                    {item.sentiment_label?.toUpperCase?.() || "—"}
-                  </div>
-                </a>
-              ))}
-
-              {!detailLoading && feed.length === 0 && (
-                <div className="text-sm text-zinc-500">No feed items found for this port.</div>
-              )}
-            </div>
+            {overviewError ? (
+              <div className="rounded-[1.5rem] border border-rose-400/20 bg-rose-400/10 px-5 py-4 text-sm text-rose-100">
+                {overviewError}
+              </div>
+            ) : null}
           </div>
         </div>
-      </aside>
+
+        <Surface title="Theme Composition Snapshot" subtitle="Highest-volume topics tied to the selected port.">
+          <div className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={(selectedOverview?.themes || []).slice(0, 10).map((row) => ({
+                  theme: row.theme_label,
+                  mentions: row.n,
+                }))}
+                layout="vertical"
+                margin={{ top: 0, right: 24, left: 12, bottom: 0 }}
+              >
+                <CartesianGrid stroke="rgba(148,163,184,0.12)" horizontal={false} />
+                <XAxis type="number" stroke="#94a3b8" tickLine={false} axisLine={false} />
+                <YAxis type="category" dataKey="theme" stroke="#cbd5e1" tickLine={false} axisLine={false} width={120} />
+                <Tooltip />
+                <Bar dataKey="mentions" fill="#38bdf8" radius={[0, 8, 8, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </Surface>
+      </div>
     </div>
   );
 }

@@ -7,10 +7,54 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Tuple
 
-# Single source of truth for DB path:
-# Set SQLITE_PATH in your shell to avoid accidentally using another DB.
-_DEFAULT = "cruise_reddit.db"
-_SQLITE_PATH = str(Path(os.getenv("SQLITE_PATH", _DEFAULT)).expanduser().resolve())
+
+def _db_score(path: Path) -> int:
+    if not path.exists():
+        return -1
+    try:
+        conn = sqlite3.connect(path)
+        try:
+            tables = ["posts", "comments", "extraction", "nlp_scores", "themes"]
+            table_count = conn.execute(
+                """
+                SELECT COUNT(*)
+                FROM sqlite_master
+                WHERE type='table'
+                  AND name IN ('posts', 'comments', 'extraction', 'nlp_scores', 'themes')
+                """
+            ).fetchone()[0]
+            row_total = 0
+            for table in tables:
+                exists = conn.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+                    (table,),
+                ).fetchone()
+                if exists:
+                    row_total += int(conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] or 0)
+            return int(table_count or 0) * 1_000_000 + row_total
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return -1
+
+
+def _resolve_sqlite_path() -> str:
+    env_path = os.getenv("SQLITE_PATH")
+    if env_path:
+        return str(Path(env_path).expanduser().resolve())
+
+    api_dir = Path(__file__).resolve().parent
+    candidates = [
+        api_dir.parent / "cruise_reddit.db",
+        api_dir.parent / "scraping" / "cruise_reddit.db",
+        Path.cwd() / "cruise_reddit.db",
+    ]
+
+    ranked = sorted(candidates, key=_db_score, reverse=True)
+    return str(ranked[0].resolve())
+
+
+_SQLITE_PATH = _resolve_sqlite_path()
 
 
 def get_sqlite_path() -> str:

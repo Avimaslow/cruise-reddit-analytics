@@ -16,3 +16,4 @@ exports/
 # mac + ide
 .DS_Store
 .idea/
+cruiseNLP/scraping/exports/

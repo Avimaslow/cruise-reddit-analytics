@@ -1,36 +1,26 @@
-import { MapContainer, TileLayer, CircleMarker, Tooltip } from "react-leaflet";
+import { CircleMarker, MapContainer, TileLayer, Tooltip } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
-import portsGeo from "./ports_geo.json";
 
-function toMarkerSize(mentions) {
-  const m = Math.max(1, mentions || 1);
-  const r = 4 + Math.log10(m) * 3.5;
-  return Math.max(4, Math.min(16, r));
+function markerRadius(mentions) {
+  const scaled = 6 + Math.log10((mentions || 1) + 1) * 4.5;
+  return Math.max(6, Math.min(18, scaled));
 }
 
-export default function PortsMap({ ports, selectedPort, onSelect }) {
-  // portsGeo expected shape: { "miami": { lat, lon, name }, ... }
-  const markers = (ports || [])
-    .map((p) => {
-      const g = portsGeo[p.id];
-      if (!g?.lat || !g?.lon) return null;
-      return {
-        id: p.id,
-        name: g.name || p.name || p.id,
-        lat: g.lat,
-        lon: g.lon,
-        mentions: p.mentions || 0,
-      };
-    })
-    .filter(Boolean);
+function markerColor(avgSentiment) {
+  if (typeof avgSentiment !== "number") return "#60a5fa";
+  if (avgSentiment >= 0.2) return "#34d399";
+  if (avgSentiment <= -0.15) return "#fb7185";
+  return "#fbbf24";
+}
 
+export default function PortsMap({ ports, selectedPortId, onSelect }) {
   return (
-    <div className="h-full w-full rounded-2xl border border-zinc-800 overflow-hidden bg-zinc-950/40">
+    <div className="h-[28rem] overflow-hidden rounded-[2rem] border border-white/10 bg-slate-950 shadow-[0_24px_80px_rgba(15,23,42,0.45)]">
       <MapContainer
-        center={[20, -30]}
-        zoom={2}
+        center={[23, -52]}
+        zoom={3}
         minZoom={2}
-        maxZoom={10}
+        maxZoom={8}
         scrollWheelZoom
         style={{ height: "100%", width: "100%" }}
       >
@@ -39,30 +29,33 @@ export default function PortsMap({ ports, selectedPort, onSelect }) {
           attribution="&copy; OpenStreetMap contributors &copy; CARTO"
         />
 
-        {markers.map((m) => {
-          const active = m.id === selectedPort;
-          const radius = toMarkerSize(m.mentions);
+        {(ports || []).map((port) => {
+          const active = port.port_id === selectedPortId;
+          const color = markerColor(port.avg_sentiment);
+          const radius = markerRadius(port.mentions);
 
           return (
             <CircleMarker
-              key={m.id}
-              center={[m.lat, m.lon]}
-              radius={active ? radius + 3 : radius}
+              key={port.port_id}
+              center={[port.lat, port.lon]}
+              radius={active ? radius + 4 : radius}
               pathOptions={{
-                color: active ? "#22c55e" : "#60a5fa",
+                color: active ? "#f8fafc" : color,
                 weight: active ? 2 : 1,
-                fillColor: active ? "#22c55e" : "#60a5fa",
-                fillOpacity: active ? 0.85 : 0.55,
+                fillColor: color,
+                fillOpacity: active ? 0.95 : 0.72,
               }}
-              eventHandlers={{
-                click: () => onSelect?.(m.id),
-              }}
+              eventHandlers={{ click: () => onSelect?.(port.port_id) }}
             >
-              <Tooltip direction="top" offset={[0, -4]} opacity={1} sticky>
-                <div className="text-xs">
-                  <div className="font-semibold">{m.name}</div>
-                  <div className="opacity-80">{m.mentions} mentions</div>
-                  <div className="opacity-70 text-[11px]">id: {m.id}</div>
+              <Tooltip direction="top" offset={[0, -4]} opacity={1}>
+                <div className="space-y-1 text-xs">
+                  <div className="font-semibold">{port.name}</div>
+                  <div className="text-slate-300">{port.country}</div>
+                  <div className="text-slate-300">{port.mentions} Reddit mentions</div>
+                  <div className="text-slate-400">
+                    Pulse {port.pulse_score} • Sentiment{" "}
+                    {typeof port.avg_sentiment === "number" ? port.avg_sentiment.toFixed(2) : "n/a"}
+                  </div>
                 </div>
               </Tooltip>
             </CircleMarker>
