@@ -18,6 +18,9 @@ Instead of showing a generic sentiment dashboard, the site is designed to answer
 - What concerns come up repeatedly for a given port?
 - Which destinations are spiking in discussion volume?
 
+
+[![Demo](screenshots/map-view.png)](screenshots/Screen%20Recording%202026-04-03%20at%202.53.01%E2%80%AFPM.mov)
+
 ---
 
 ## What The Site Does
