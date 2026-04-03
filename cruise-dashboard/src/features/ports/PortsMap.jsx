@@ -13,6 +13,19 @@ function markerColor(avgSentiment) {
   return "#fbbf24";
 }
 
+function moodLabel(avgSentiment) {
+  if (typeof avgSentiment !== "number") return "Mixed";
+  if (avgSentiment >= 0.2) return "Traveler favorite";
+  if (avgSentiment <= -0.15) return "Concern-heavy";
+  return "Mixed signal";
+}
+
+function positiveShare(port) {
+  const mentions = Number(port.mentions || 0);
+  if (!mentions) return "n/a";
+  return `${Math.round(((Number(port.pos_count || 0) / mentions) || 0) * 100)}% positive`;
+}
+
 export default function PortsMap({ ports, selectedPortId, onSelect }) {
   return (
     <div className="h-[28rem] overflow-hidden rounded-[2rem] border border-white/10 bg-slate-950 shadow-[0_24px_80px_rgba(15,23,42,0.45)]">
@@ -48,13 +61,33 @@ export default function PortsMap({ ports, selectedPortId, onSelect }) {
               eventHandlers={{ click: () => onSelect?.(port.port_id) }}
             >
               <Tooltip direction="top" offset={[0, -4]} opacity={1}>
-                <div className="space-y-1 text-xs">
-                  <div className="font-semibold">{port.name}</div>
-                  <div className="text-slate-300">{port.country}</div>
-                  <div className="text-slate-300">{port.mentions} Reddit mentions</div>
-                  <div className="text-slate-400">
-                    Pulse {port.pulse_score} • Sentiment{" "}
-                    {typeof port.avg_sentiment === "number" ? port.avg_sentiment.toFixed(2) : "n/a"}
+                <div className="min-w-[14rem] space-y-2 text-xs">
+                  <div>
+                    <div className="font-semibold">{port.name}</div>
+                    <div className="text-slate-300">
+                      {port.country} • {port.region}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-slate-300">
+                    <div>
+                      <div className="text-slate-500">References</div>
+                      <div>{port.mentions}</div>
+                    </div>
+                    <div>
+                      <div className="text-slate-500">Cruise posts</div>
+                      <div>{port.post_mentions || 0}</div>
+                    </div>
+                    <div>
+                      <div className="text-slate-500">Pulse</div>
+                      <div>{port.pulse_score}</div>
+                    </div>
+                    <div>
+                      <div className="text-slate-500">Sentiment</div>
+                      <div>{typeof port.avg_sentiment === "number" ? port.avg_sentiment.toFixed(2) : "n/a"}</div>
+                    </div>
+                  </div>
+                  <div className="text-slate-200">
+                    {moodLabel(port.avg_sentiment)} • {positiveShare(port)}
                   </div>
                 </div>
               </Tooltip>

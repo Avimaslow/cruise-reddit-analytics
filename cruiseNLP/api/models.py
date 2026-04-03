@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 
 ObjectType = Literal["post", "comment"]
-EntityType = Literal["port", "line"]
+EntityType = Literal["port", "line", "ship"]
 
 
 class Health(BaseModel):

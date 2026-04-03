@@ -15,6 +15,16 @@ function StatPill({ label, value }) {
   );
 }
 
+function MetricCaption() {
+  return (
+    <div className="rounded-2xl border border-cyan-300/15 bg-cyan-300/5 px-4 py-3 text-sm leading-6 text-slate-300">
+      <span className="font-semibold text-cyan-100">Avg Sentiment</span> shows whether discussion
+      trends positive or negative overall. <span className="font-semibold text-cyan-100">Avg Severity</span>{" "}
+      shows how intense the complaint signal is when discussion turns negative.
+    </div>
+  );
+}
+
 function PortRankCard({ title, rows, kind = "best" }) {
   // kind: best = low severity + high sentiment, worst = high severity + low sentiment
   const ranked = useMemo(() => {
@@ -58,7 +68,7 @@ function PortRankCard({ title, rows, kind = "best" }) {
               </div>
             </div>
             <div className="mt-1 text-xs text-zinc-500">
-              avg_sev {p.avg_sev.toFixed(3)} • avg_sent {p.avg_sent.toFixed(3)}
+              Avg Severity {p.avg_sev.toFixed(3)} • Avg Sentiment {p.avg_sent.toFixed(3)}
             </div>
           </Link>
         ))}
@@ -179,6 +189,10 @@ export default function LinePage() {
           <StatPill label="Avg Sentiment" value={typeof avgSent === "number" ? avgSent.toFixed(3) : "—"} />
           <StatPill label="Avg Severity" value={typeof avgSev === "number" ? avgSev.toFixed(3) : "—"} />
           <StatPill label="Ports Mentioned" value={ports?.length ?? 0} />
+        </div>
+
+        <div className="mt-3">
+          <MetricCaption />
         </div>
 
         {/* Top row cards */}

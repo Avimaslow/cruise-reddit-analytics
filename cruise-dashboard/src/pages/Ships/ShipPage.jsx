@@ -15,6 +15,16 @@ function StatPill({ label, value }) {
   );
 }
 
+function MetricCaption() {
+  return (
+    <div className="rounded-2xl border border-cyan-300/15 bg-cyan-300/5 px-4 py-3 text-sm leading-6 text-slate-300">
+      <span className="font-semibold text-cyan-100">Avg Sentiment</span> measures overall discussion tone.
+      <span className="font-semibold text-cyan-100"> Avg Severity</span> measures how strong the complaint
+      signal is when negative issues show up.
+    </div>
+  );
+}
+
 function titleizeShip(shipId) {
   return (shipId || "")
     .split("-")
@@ -147,6 +157,8 @@ export default function ShipPage() {
             <StatPill label="Avg Sentiment" value={typeof avgSent === "number" ? avgSent.toFixed(3) : "—"} />
             <StatPill label="Avg Severity" value={typeof avgSev === "number" ? avgSev.toFixed(3) : "—"} />
           </div>
+
+          <MetricCaption />
 
           {/* Trend */}
           <div className="rounded-2xl border border-zinc-800 bg-zinc-950/40 overflow-hidden">
