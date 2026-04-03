@@ -65,6 +65,9 @@ The app also includes:
 
 The home page is the main map experience.
 
+
+[![Home Page](screenshots/Screenshot%202026-04-03%20at%202.49.45%E2%80%AFPM.png)](screenshots/Screenshot%202026-04-03%20at%202.49.45%E2%80%AFPM.png)
+
 It includes:
 
 - the port map
