@@ -19,7 +19,10 @@ Instead of showing a generic sentiment dashboard, the site is designed to answer
 - Which destinations are spiking in discussion volume?
 
 
-[![Demo](screenshots/map-view.png)](screenshots/Screen%20Recording%202026-04-03%20at%202.53.01%E2%80%AFPM.mov)
+![Cruise Port Intelligence demo](screenshots/demo.gif)
+
+[Open MP4 demo](screenshots/demo.mp4)
+## Demo
 
 ---
 
